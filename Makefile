@@ -110,6 +110,5 @@ talk:
 # File list the Pages-hosted deck uses to open source in the in-deck viewer.
 talk-index:
 	python3 -c "import json,pathlib; r=pathlib.Path('.'); f=[]; \
-[f.extend(p.as_posix() for p in sorted((r/d).rglob('*')) if p.is_file() and p.suffix in {'.go','.sh','.md'}) for d in ('cmd','internal','scripts')]; \
-f += [n for n in ('Makefile','README.md','IMPLEMENTATION.md','ROADMAP.md','ARCHITECTURE.md') if (r/n).is_file()]; \
+[f.extend(p.as_posix() for p in sorted((r/d).rglob('*')) if p.is_file() and p.suffix in {'.go','.sh'}) for d in ('cmd','internal','scripts')]; \
 (r/'docs/talk/src-index.json').write_text(json.dumps({'files':f,'remote':'https://raw.githubusercontent.com/asideofcode/mytcp/main/','blob':'https://github.com/asideofcode/mytcp/blob/main/'}, indent=2)+'\n'); print(len(f),'files')"

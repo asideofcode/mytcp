@@ -39,12 +39,7 @@
     "internal/tcp/stream_test.go",
     "scripts/lab.sh",
     "scripts/setup-tap.sh",
-    "scripts/smoke-linux.sh",
-    "Makefile",
-    "README.md",
-    "IMPLEMENTATION.md",
-    "ROADMAP.md",
-    "ARCHITECTURE.md"
+    "scripts/smoke-linux.sh"
   ],
   "remote": "https://raw.githubusercontent.com/asideofcode/mytcp/main/",
   "blob": "https://github.com/asideofcode/mytcp/blob/main/"

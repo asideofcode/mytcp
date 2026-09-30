@@ -17,7 +17,8 @@ import urllib.parse
 TALK = pathlib.Path(__file__).resolve().parent
 REPO = TALK.parent.parent
 SOURCE_DIRS = ("cmd", "internal", "scripts")
-SOURCE_EXTS = {".go", ".sh", ".md"}
+# Only the stack itself — no markdown, Makefile, or other top-level docs.
+SOURCE_EXTS = {".go", ".sh"}
 
 
 def source_files():
@@ -26,9 +27,6 @@ def source_files():
         for p in sorted((REPO / d).rglob("*")):
             if p.is_file() and p.suffix in SOURCE_EXTS:
                 files.append(p.relative_to(REPO).as_posix())
-    for name in ("Makefile", "README.md", "IMPLEMENTATION.md", "ROADMAP.md"):
-        if (REPO / name).is_file():
-            files.append(name)
     return files
 
 

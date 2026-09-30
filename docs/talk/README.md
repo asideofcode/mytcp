@@ -27,8 +27,9 @@ that slide. Browse other files from the tree, use A−/A+ for text size, then
 Locally (`make talk` / `serve.py`), files come from your working tree and
 “Open in Cursor” jumps to the same line in the IDE. On GitHub Pages, files are
 fetched from this repo over the network and the button opens the file on GitHub
-instead. The file list for Pages is `src-index.json` (regenerate after adding
-sources: `make talk-index`).
+instead. The tree only lists `cmd/`, `internal/` and `scripts/` (`.go` / `.sh`);
+no markdown or top-level docs. Refresh `src-index.json` with `make talk-index`
+after adding sources.
 
 Sources: [presentation.md](../presentation.md), [layers-and-onions.md](../layers-and-onions.md).
 
