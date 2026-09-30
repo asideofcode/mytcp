@@ -69,6 +69,11 @@ jq -r 'select(.n==7).data' captures/talk-http.jsonl | xxd -r -p | hexdump -C
 `python3 hexdumps.py`; it rewrites the slides between the
 `<!-- hexdump:NAME -->` markers in `index.html`.
 
+The preamble also includes a real `curl -4 http://google.com/` capture
+from Docker (`strace` + `tcpdump` on `eth0`, port 80). Plain HTTP on
+purpose: the HEAD and the 301 redirect stay readable. Those frames live
+in `FRAMES` as `google-http-syn`, `google-http-req` and `google-http-301`.
+
 Colour means layer, on every slide: Ethernet blue, ARP yellow, IPv4
 orange, ICMP teal, TCP purple, HTTP green, TLS red. Grey means the layer
 is explained on another slide. Within a layer, fields alternate

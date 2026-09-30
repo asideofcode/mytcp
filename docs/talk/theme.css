@@ -229,6 +229,11 @@ html.reveal-full-page,
   font-size: 0.64em;
 }
 
+.reveal pre.diagram-code.strace {
+  font-size: 0.52em;
+  line-height: 1.35;
+}
+
 .reveal blockquote {
   background: var(--panel);
   border-left: 4px solid var(--accent);

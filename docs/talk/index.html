@@ -32,8 +32,8 @@
         <p class="lede">Use the HTTP standard library, as a client or a server, in Go, Ruby or Node, and you hand the hard part to the operating system.</p>
         <ul>
           <li class="fragment">Your code builds a request. The kernel puts it on the wire: Ethernet, IP, TCP, the retransmits.</li>
-          <li class="fragment">A userland process only reaches that stack through system calls: <code>socket</code> <code>connect</code> <code>read</code> <code>write</code></li>
-          <li class="fragment">Those calls are the whole API. The bytes on the wire are on the other side of them.</li>
+          <li class="fragment">A userland process only reaches that stack through system calls: <code>socket</code> <code>connect</code> <code>send</code> <code>recv</code></li>
+          <li class="fragment">Those calls hide the complexity. They are a narrow API; the bytes on the wire are on the other side of them.</li>
         </ul>
         <p class="fragment punch">This talk is that other side.</p>
         <aside class="notes">
@@ -43,6 +43,82 @@
           We are about to do the kernel’s job, badly and on purpose, so the syscalls stop being a wall.
         </aside>
       </section>
+
+      <!-- hexdump:scope -->
+      <section id="strace-curl">
+        <h2>Syscalls hide the complexity</h2>
+        <p class="code-path">strace -e trace=network curl -4 -sI --max-redirs 0 http://google.com/ · inside Docker</p>
+        <pre class="diagram-code strace"><code class="nohighlight">socket(AF_INET, SOCK_STREAM, IPPROTO_TCP) = 5
+connect(5, {sin_port=htons(80),
+            sin_addr=inet_addr("142.251.30.113")}, 16) = 0
+# ↑ curl said “connect”. The kernel did ARP (maybe cached)
+#   and the whole TCP handshake. No syscall per packet.
+
+sendto(5, "HEAD / HTTP/1.1\r\nHost: google.com\r\n"..., 75) = 75
+recvfrom(5, "HTTP/1.1 301 Moved Permanently\r\n"
+            "Location: http://www.google.com/\r\n"..., ...) = 554
+close(5) = 0</code></pre>
+        <p class="fragment soft">curl only ever spoke HTTP text. Four calls — open, connect, send, receive — and everything underneath stays on the other side of the API.</p>
+        <aside class="notes">
+          Real capture from a Debian container. EINPROGRESS / poll / DNS omitted for clarity.
+          Point at connect: SYN/SYN+ACK/ACK happened with no syscall per packet.
+          Point at sendto/recvfrom: the strings are plain HTTP — a HEAD, then a 301 redirect.
+          Plain HTTP on purpose: the audience can read both sides. TLS would seal the story too early.
+        </aside>
+      </section>
+
+      <section id="hex-google-req">
+        <h2>sendto said this; the wire said that</h2>
+        <p class="code-path">tcpdump · first payload after the handshake · curl → google.com:80</p>
+        <pre class="hexdump tight"><code class="nohighlight" data-noescape>00000000  <span class="eth1">02 42 f2 e3 9b 63 02 42  ac 11 00 04 08 00</span> <span class="ip1">45 00</span>  |<span class="eth1">.B...c.B......</span><span class="ip1">E.</span>|
+00000010  <span class="ip1">00 7f 5e 7f 40 00 40 06  82 78 ac 11 00 04 8e fb</span>  |<span class="ip1">..^.@.@..x......</span>|
+00000020  <span class="ip1">1e 71</span> <span class="tcp1">e4 d4 00 50 73 7d  38 96 1b 3b b8 d8 80 18</span>  |<span class="ip1">.q</span><span class="tcp1">...Ps}8..;....</span>|
+00000030  <span class="tcp1">02 00 59 f3 00 00 01 01  08 0a 16 a0 3f d2 d7 2a</span>  |<span class="tcp1">..Y.........?..*</span>|
+00000040  <span class="tcp1">fb a7</span> <span class="http1">48 45 41 44 20 2f  20 48 54 54 50 2f 31 2e</span>  |<span class="tcp1">..</span><span class="http1">HEAD / HTTP/1.</span>|
+00000050  <span class="http1">31 0d 0a 48 6f 73 74 3a  20 67 6f 6f 67 6c 65 2e</span>  |<span class="http1">1..Host: google.</span>|
+00000060  <span class="http1">63 6f 6d 0d 0a 55 73 65  72 2d 41 67 65 6e 74 3a</span>  |<span class="http1">com..User-Agent:</span>|
+00000070  <span class="http1">20 63 75 72 6c 2f 37 2e  38 38 2e 31 0d 0a 41 63</span>  |<span class="http1"> curl/7.88.1..Ac</span>|
+00000080  <span class="http1">63 65 70 74 3a 20 2a 2f  2a 0d 0a 0d 0a</span>           |<span class="http1">cept: */*....</span>|
+0000008d</code></pre>
+        <table class="compact hexlegend">
+          <thead><tr><th></th><th>Bytes</th><th>Field</th><th>Value</th></tr></thead>
+          <tbody>
+            <tr><td><span class="chip eth1"></span></td><td>0–13</td><td>Ethernet header</td><td>container → gateway · type 08 00 = IPv4</td></tr>
+            <tr><td><span class="chip ip1"></span></td><td>14–33</td><td>IPv4 header</td><td>src 172.17.0.4 · dst 142.251.30.113 · proto 06 = TCP</td></tr>
+            <tr><td><span class="chip tcp1"></span></td><td>34–65</td><td>TCP header</td><td>58580 → 80 · PSH+ACK · 32 bytes including options</td></tr>
+            <tr><td><span class="chip http1"></span></td><td>66–140</td><td>HTTP request</td><td>exactly the 75 bytes curl passed to sendto — readable in the ASCII column</td></tr>
+          </tbody>
+        </table>
+        <p class="soft hexnote">The green band is exactly what curl passed to <code>sendto</code>. Ethernet, IP and TCP — left of it — were added by the kernel: the complexity those syscalls hid.</p>
+      </section>
+
+      <section id="hex-google-301">
+        <h2>And back: a redirect you can still read</h2>
+        <p class="code-path">tcpdump · HTTP response · same connection</p>
+        <pre class="hexdump tight"><code class="nohighlight" data-noescape>00000000  <span class="eth1">02 42 ac 11 00 04 02 42  f2 e3 9b 63 08 00</span> <span class="ip1">45 00</span>  |<span class="eth1">.B.....B...c..</span><span class="ip1">E.</span>|
+00000010  <span class="ip1">02 5e 98 55 00 00 3f 06  87 c3 8e fb 1e 71 ac 11</span>  |<span class="ip1">.^.U..?......q..</span>|
+00000020  <span class="ip1">00 04</span> <span class="tcp1">00 50 e4 d4 1b 3b  b8 d8 73 7d 38 e1 80 18</span>  |<span class="ip1">..</span><span class="tcp1">.P...;..s}8...</span>|
+00000030  <span class="tcp1">10 00 55 96 00 00 01 01  08 0a d7 2a fb bf 16 a0</span>  |<span class="tcp1">..U........*....</span>|
+00000040  <span class="tcp1">3f d2</span> <span class="http1">48 54 54 50 2f 31  2e 31 20 33 30 31 20 4d</span>  |<span class="tcp1">?.</span><span class="http1">HTTP/1.1 301 M</span>|
+00000050  <span class="http1">6f 76 65 64 20 50 65 72  6d 61 6e 65 6e 74 6c 79</span>  |<span class="http1">oved Permanently</span>|
+00000060  <span class="http1">0d 0a 4c 6f 63 61 74 69  6f 6e 3a 20 68 74 74 70</span>  |<span class="http1">..Location: http</span>|
+00000070  <span class="http1">3a 2f 2f 77 77 77 2e 67  6f 6f 67 6c 65 2e 63 6f</span>  |<span class="http1">://www.google.co</span>|
+00000080  <span class="http1">6d 2f 0d 0a 43 6f 6e 74  65 6e 74 2d 54 79 70 65</span>  |<span class="http1">m/..Content-Type</span>|
+00000090  <span class="http1">3a 20 74 65 78 74 2f 68  74 6d 6c 3b 20 63 68 61</span>  |<span class="http1">: text/html; cha</span>|
+000000a0  <span class="http1">72 73 65 74 3d 55 54 46  2d 38 0d 0a</span>              |<span class="http1">rset=UTF-8..</span>|
+000000ac</code></pre>
+        <table class="compact hexlegend">
+          <thead><tr><th></th><th>Bytes</th><th>Field</th><th>Value</th></tr></thead>
+          <tbody>
+            <tr><td><span class="chip eth1"></span></td><td>0–13</td><td>Ethernet header</td><td>gateway → container · reply on the same path</td></tr>
+            <tr><td><span class="chip ip1"></span></td><td>14–33</td><td>IPv4 header</td><td>src 142.251.30.113 · dst 172.17.0.4 · proto 06 = TCP</td></tr>
+            <tr><td><span class="chip tcp1"></span></td><td>34–65</td><td>TCP header</td><td>80 → 58580 · PSH+ACK</td></tr>
+            <tr><td><span class="chip http1"></span></td><td>66–171</td><td>HTTP response (start)</td><td>301 Moved Permanently · Location: http://www.google.com/</td></tr>
+          </tbody>
+        </table>
+        <p class="soft hexnote">Same four layers, other direction. Google’s answer is still plain text on the socket: <code>301</code>, go to <code>www.google.com</code>. The dump stops after <code>Content-Type</code>; the full response was 554 bytes. curl never saw a packet — only this string.</p>
+      </section>
+      <!-- /hexdump:scope -->
 
       <section>
         <h2>It is all one string of bits</h2>

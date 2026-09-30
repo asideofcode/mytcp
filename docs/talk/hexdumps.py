@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
 """Render the annotated `hexdump -C` slides into index.html.
 
-The frames below were captured in the lab with:
+Lab frames (ARP, ping, HTTP, mintls) were captured with:
 
-    /tmp/mytcp -i tap0 -app http      -pcap captures/talk-http       # + ping, curl
-    /tmp/mytcp -i tap0 -app https-diy -pcap captures/talk-https-diy  # + curl -k
+    /tmp/mytcp -i tap0 -app http      -pcap captures/talk-http
+    /tmp/mytcp -i tap0 -app https-diy -pcap captures/talk-https-diy
 
-and read back with:
+The google.com preamble frames were captured in Docker:
 
-    jq -r 'select(.n==7).data' captures/talk-http.jsonl | xxd -r -p | hexdump -C
+    tcpdump -i eth0 -w google.pcap "tcp port 80" &
+    strace -f -e trace=network curl -4 -sI --max-redirs 0 http://google.com/
 
-captures/ is gitignored, so the bytes are copied here. Each slide lives
-between <!-- hexdump:NAME --> markers; rerun this script after editing.
+captures/ is gitignored, so the bytes are copied into FRAMES below.
+Each slide lives between <!-- hexdump:NAME --> markers; rerun this script
+after editing.
 """
 
 import html
@@ -27,6 +29,11 @@ FRAMES = {
     "ack": "020000000002eeeaf30f573208004500002856eb40004006cfe20a0000010a000002c68a005013e85a67000003e95010faf067ce0000",
     "http-get": "020000000002eeeaf30f573208004500007056ec40004006cf990a0000010a000002c68a005013e85a67000003e95018faf091b10000474554202f20485454502f312e310d0a486f73743a2031302e302e302e320d0a557365722d4167656e743a206375726c2f372e38382e310d0a4163636570743a202a2f2a0d0a0d0a",
     "tls-get": "020000000002aa0baa94e9f308004500008d13f34000400612760a0000010a000002ce9e01bb6f3a1b39000006545018f95ac9130000170303006091a20ad98a04d79f3810fffeb5c37707da7769853ca0878e2c7ce85456b3a1800bb3b9990898a44841014f6ed81ed1929b37442d7af68a886645c208886b41604027021aa37352918a843c50cd887e9aad265f2a1ce5abd38a80393471bf80c9",
+    # curl -4 http://google.com/ in Docker; tcpdump on eth0 (see docs/talk/README.md)
+    "google-http-syn": "0242f2e39b630242ac11000408004500003c5e7d4000400682bdac1100048efb1e71e4d40050737d389500000000a002ffd759b000000204ffd70402080a16a03fcb0000000001030307",
+    "google-http-req": "0242f2e39b630242ac11000408004500007f5e7f400040068278ac1100048efb1e71e4d40050737d38961b3bb8d88018020059f300000101080a16a03fd2d72afba748454144202f20485454502f312e310d0a486f73743a20676f6f676c652e636f6d0d0a557365722d4167656e743a206375726c2f372e38382e310d0a4163636570743a202a2f2a0d0a0d0a",
+    # first headers of the 301 (full HTTP body was 554 bytes)
+    "google-http-301": "0242ac1100040242f2e39b6308004500025e985500003f0687c38efb1e71ac1100040050e4d41b3bb8d8737d38e180181000559600000101080ad72afbbf16a03fd2485454502f312e3120333031204d6f766564205065726d616e656e746c790d0a4c6f636174696f6e3a20687474703a2f2f7777772e676f6f676c652e636f6d2f0d0a436f6e74656e742d547970653a20746578742f68746d6c3b20636861727365743d5554462d380d0a",
 }
 
 def shade(fields):
@@ -252,6 +259,69 @@ READ_CMD = (
 )
 
 SLIDES = {}
+
+# Plain HTTP to google.com:80 — readable request and 301 redirect.
+GOOGLE_HTTP_REQ = shade([
+    (0, 14, "eth", "Ethernet header", "container → gateway · type 08 00 = IPv4"),
+    (14, 34, "ip", "IPv4 header", "src 172.17.0.4 · dst 142.251.30.113 · proto 06 = TCP"),
+    (34, 66, "tcp", "TCP header", "58580 → 80 · PSH+ACK · 32 bytes including options"),
+    (66, 141, "http", "HTTP request", "exactly the 75 bytes curl passed to sendto — readable in the ASCII column"),
+])
+
+GOOGLE_HTTP_301 = shade([
+    (0, 14, "eth", "Ethernet header", "gateway → container · reply on the same path"),
+    (14, 34, "ip", "IPv4 header", "src 142.251.30.113 · dst 172.17.0.4 · proto 06 = TCP"),
+    (34, 66, "tcp", "TCP header", "80 → 58580 · PSH+ACK"),
+    (66, 172, "http", "HTTP response (start)", "301 Moved Permanently · Location: http://www.google.com/"),
+])
+
+STRACE_SLIDE = """      <section id="strace-curl">
+        <h2>Syscalls hide the complexity</h2>
+        <p class="code-path">strace -e trace=network curl -4 -sI --max-redirs 0 http://google.com/ · inside Docker</p>
+        <pre class="diagram-code strace"><code class="nohighlight">socket(AF_INET, SOCK_STREAM, IPPROTO_TCP) = 5
+connect(5, {sin_port=htons(80),
+            sin_addr=inet_addr("142.251.30.113")}, 16) = 0
+# ↑ curl said “connect”. The kernel did ARP (maybe cached)
+#   and the whole TCP handshake. No syscall per packet.
+
+sendto(5, "HEAD / HTTP/1.1\\r\\nHost: google.com\\r\\n"..., 75) = 75
+recvfrom(5, "HTTP/1.1 301 Moved Permanently\\r\\n"
+            "Location: http://www.google.com/\\r\\n"..., ...) = 554
+close(5) = 0</code></pre>
+        <p class="fragment soft">curl only ever spoke HTTP text. Four calls — open, connect, send, receive — and everything underneath stays on the other side of the API.</p>
+        <aside class="notes">
+          Real capture from a Debian container. EINPROGRESS / poll / DNS omitted for clarity.
+          Point at connect: SYN/SYN+ACK/ACK happened with no syscall per packet.
+          Point at sendto/recvfrom: the strings are plain HTTP — a HEAD, then a 301 redirect.
+          Plain HTTP on purpose: the audience can read both sides. TLS would seal the story too early.
+        </aside>
+      </section>"""
+
+SLIDES["scope"] = (
+    "The networking stack lives in the kernel",
+    STRACE_SLIDE
+    + "\n\n"
+    + section(
+        "hex-google-req",
+        "sendto said this; the wire said that",
+        "tcpdump · first payload after the handshake · curl → google.com:80",
+        "        " + dump(b("google-http-req"), spans(GOOGLE_HTTP_REQ), cls="hexdump tight"),
+        table(["Field", "Value"], GOOGLE_HTTP_REQ),
+        note("The green band is exactly what curl passed to <code>sendto</code>. "
+             "Ethernet, IP and TCP — left of it — were added by the kernel: the complexity those syscalls hid."),
+    )
+    + "\n\n"
+    + section(
+        "hex-google-301",
+        "And back: a redirect you can still read",
+        "tcpdump · HTTP response · same connection",
+        "        " + dump(b("google-http-301"), spans(GOOGLE_HTTP_301), cls="hexdump tight"),
+        table(["Field", "Value"], GOOGLE_HTTP_301),
+        note("Same four layers, other direction. Google’s answer is still plain text on the socket: "
+             "<code>301</code>, go to <code>www.google.com</code>. The dump stops after "
+             "<code>Content-Type</code>; the full response was 554 bytes. curl never saw a packet — only this string."),
+    ),
+)
 
 SLIDES["read"] = (
     "Parsing means reading bytes at fixed offsets",
