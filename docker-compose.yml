@@ -1,0 +1,20 @@
+services:
+  lab:
+    build: .
+    container_name: mytcp-lab
+    working_dir: /work
+    volumes:
+      - .:/work
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    # Docker blocks writing these from inside the container (EACCES /
+    # read-only /proc/sys). Set at create-time so new ifaces like tap0
+    # never get IPv6 (no MLD/ND/RS noise on the TAP fd).
+    sysctls:
+      - net.ipv6.conf.all.disable_ipv6=1
+      - net.ipv6.conf.default.disable_ipv6=1
+    stdin_open: true
+    tty: true
+    restart: unless-stopped
