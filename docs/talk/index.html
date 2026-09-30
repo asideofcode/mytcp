@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Standing on Giants — mytcp</title>
+  <title>From TAP to curl: Building a Userspace TCP Stack in Go — mytcp</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=IBM+Plex+Mono:wght@400;500&family=Source+Sans+3:wght@400;600&display=swap" rel="stylesheet" />
@@ -19,11 +19,40 @@
       <!-- ========== TITLE ========== -->
       <section class="divider" data-background-gradient="linear-gradient(145deg, #0c1218 0%, #152028 45%, #1a2f2a 100%)">
         <p class="brand">mytcp</p>
-        <h1>Standing on Giants</h1>
-        <p class="subtitle">Building a userspace TCP stack — and why the layers still matter</p>
-        <p class="meta">~60 minutes · TAP → ARP → IP → TCP → HTTP → (optional) TLS</p>
+        <h1>From TAP to curl</h1>
+        <p class="subtitle">Building a userspace TCP stack in Go</p>
+        <p class="tagline">How to be an artisan of networking: ditch ultraprocessed packets for organic, locally sourced raw bytes</p>
         <aside class="notes">
           Open with the brand. This is a teaching stack over Linux TAP, not a product pitch.
+          Read the artisan line with a straight face: the talk is about making the frames yourself.
+        </aside>
+      </section>
+
+      <section id="life-of-curl">
+        <h2>The life of a curl request</h2>
+        <div class="mermaid journey">
+sequenceDiagram
+  participant A as curl
+  participant K as Kernel
+  participant N as Network card
+  participant I as The internet
+  participant G as google.com
+  A->>K: connect(google.com, port 80)
+  Note over K,G: the kernel runs the TCP handshake: three packets
+  A->>K: send("HEAD / HTTP/1.1 …")
+  K->>N: wrapped in TCP, IPv4 and Ethernet headers
+  N->>I: bits on a wire
+  I->>G: router to router
+  G-->>I: HTTP/1.1 301 Moved
+  I-->>N: back the same way
+  N-->>K: one Ethernet frame
+  K-->>A: recv() returns the HTTP text only
+        </div>
+        <p class="fragment soft">curl only ever talks to the kernel. What the kernel does between those calls is what this talk builds.</p>
+        <aside class="notes">
+          Walk it left to right, then back. curl makes two calls and gets text back.
+          The kernel does the handshake, adds the headers, and hands the frame to the network card.
+          Next slide: that kernel stack is what the standard library leans on.
         </aside>
       </section>
 
@@ -58,7 +87,7 @@ sendto(5, "HEAD / HTTP/1.1\r\nHost: google.com\r\n"..., 75) = 75
 recvfrom(5, "HTTP/1.1 301 Moved Permanently\r\n"
             "Location: http://www.google.com/\r\n"..., ...) = 554
 close(5) = 0</code></pre>
-        <p class="fragment soft">curl only ever spoke HTTP text. Four calls — open, connect, send, receive — and everything underneath stays on the other side of the API.</p>
+        <p class="fragment soft">curl only sent and received HTTP text. The handshake, the headers and any resends all happened inside the kernel, where curl can’t see them. The next two slides show what that looks like on the wire.</p>
         <aside class="notes">
           Real capture from a Debian container. EINPROGRESS / poll / DNS omitted for clarity.
           Point at connect: SYN/SYN+ACK/ACK happened with no syscall per packet.
@@ -67,13 +96,13 @@ close(5) = 0</code></pre>
         </aside>
       </section>
 
-      <section id="hex-google-req">
-        <h2>sendto said this; the wire said that</h2>
-        <p class="code-path">tcpdump · first payload after the handshake · curl → google.com:80</p>
-        <pre class="hexdump tight"><code class="nohighlight" data-noescape>00000000  <span class="eth1">02 42 f2 e3 9b 63 02 42  ac 11 00 04 08 00</span> <span class="ip1">45 00</span>  |<span class="eth1">.B...c.B......</span><span class="ip1">E.</span>|
-00000010  <span class="ip1">00 7f 5e 7f 40 00 40 06  82 78 ac 11 00 04 8e fb</span>  |<span class="ip1">..^.@.@..x......</span>|
-00000020  <span class="ip1">1e 71</span> <span class="tcp1">e4 d4 00 50 73 7d  38 96 1b 3b b8 d8 80 18</span>  |<span class="ip1">.q</span><span class="tcp1">...Ps}8..;....</span>|
-00000030  <span class="tcp1">02 00 59 f3 00 00 01 01  08 0a 16 a0 3f d2 d7 2a</span>  |<span class="tcp1">..Y.........?..*</span>|
+      <section id="hex-google-req" class="hex-dense">
+        <h2>curl handed over 75 bytes. The kernel sent 141.</h2>
+        <p class="code-path">tcpdump · the request as it left the container · curl → google.com:80</p>
+        <pre class="hexdump tight"><code class="nohighlight" data-noescape>00000000  <span class="eth1">02 42 f2 e3 9b 63</span> <span class="eth2">02 42  ac 11 00 04</span> <span class="eth1">08 00</span> <span class="ip1">45</span> <span class="ip2">00</span>  |<span class="eth1">.B...c</span><span class="eth2">.B....</span><span class="eth1">..</span><span class="ip1">E</span><span class="ip2">.</span>|
+00000010  <span class="ip1">00 7f</span> <span class="ip2">5e 7f</span> <span class="ip1">40 00</span> <span class="ip2">40</span> <span class="ip1">06</span>  <span class="ip2">82 78</span> <span class="ip1">ac 11 00 04</span> <span class="ip2">8e fb</span>  |<span class="ip1">..</span><span class="ip2">^.</span><span class="ip1">@.</span><span class="ip2">@</span><span class="ip1">.</span><span class="ip2">.x</span><span class="ip1">....</span><span class="ip2">..</span>|
+00000020  <span class="ip2">1e 71</span> <span class="tcp1">e4 d4 00 50</span> <span class="tcp2">73 7d  38 96</span> <span class="tcp1">1b 3b b8 d8</span> <span class="tcp2">80 18</span>  |<span class="ip2">.q</span><span class="tcp1">...P</span><span class="tcp2">s}8.</span><span class="tcp1">.;..</span><span class="tcp2">..</span>|
+00000030  <span class="tcp1">02 00</span> <span class="tcp2">59 f3 00 00</span> <span class="tcp1">01 01  08 0a 16 a0 3f d2 d7 2a</span>  |<span class="tcp1">..</span><span class="tcp2">Y...</span><span class="tcp1">......?..*</span>|
 00000040  <span class="tcp1">fb a7</span> <span class="http1">48 45 41 44 20 2f  20 48 54 54 50 2f 31 2e</span>  |<span class="tcp1">..</span><span class="http1">HEAD / HTTP/1.</span>|
 00000050  <span class="http1">31 0d 0a 48 6f 73 74 3a  20 67 6f 6f 67 6c 65 2e</span>  |<span class="http1">1..Host: google.</span>|
 00000060  <span class="http1">63 6f 6d 0d 0a 55 73 65  72 2d 41 67 65 6e 74 3a</span>  |<span class="http1">com..User-Agent:</span>|
@@ -83,40 +112,73 @@ close(5) = 0</code></pre>
         <table class="compact hexlegend">
           <thead><tr><th></th><th>Bytes</th><th>Field</th><th>Value</th></tr></thead>
           <tbody>
-            <tr><td><span class="chip eth1"></span></td><td>0–13</td><td>Ethernet header</td><td>container → gateway · type 08 00 = IPv4</td></tr>
-            <tr><td><span class="chip ip1"></span></td><td>14–33</td><td>IPv4 header</td><td>src 172.17.0.4 · dst 142.251.30.113 · proto 06 = TCP</td></tr>
-            <tr><td><span class="chip tcp1"></span></td><td>34–65</td><td>TCP header</td><td>58580 → 80 · PSH+ACK · 32 bytes including options</td></tr>
-            <tr><td><span class="chip http1"></span></td><td>66–140</td><td>HTTP request</td><td>exactly the 75 bytes curl passed to sendto — readable in the ASCII column</td></tr>
+            <tr><td><span class="chip eth1"></span></td><td>0–5</td><td><a class="jump" href="#/struct-eth">Destination MAC (<code>Dst</code>)</a></td><td>02:42:f2:e3:9b:63 = the Docker bridge gateway</td></tr>
+            <tr><td><span class="chip eth2"></span></td><td>6–11</td><td><a class="jump" href="#/struct-eth">Source MAC (<code>Src</code>)</a></td><td>02:42:ac:11:00:04 = this container</td></tr>
+            <tr><td><span class="chip eth1"></span></td><td>12–13</td><td><a class="jump" href="#/struct-eth">EtherType (<code>Type</code>)</a></td><td>08 00 = IPv4</td></tr>
+            <tr><td><span class="chip ip1"></span></td><td>14</td><td>Version + header length</td><td>45: 4 = IPv4, 5 × 4 = 20-byte header</td></tr>
+            <tr><td><span class="chip ip2"></span></td><td>15</td><td>Traffic class</td><td>00 = ordinary traffic</td></tr>
+            <tr><td><span class="chip ip1"></span></td><td>16–17</td><td>Total length</td><td>00 7f = 127: this header + TCP + HTTP</td></tr>
+            <tr><td><span class="chip ip2"></span></td><td>18–19</td><td>Identification</td><td>5e 7f</td></tr>
+            <tr><td><span class="chip ip1"></span></td><td>20–21</td><td>Flags + fragment offset</td><td>40 00 = don’t fragment</td></tr>
+            <tr><td><span class="chip ip2"></span></td><td>22</td><td>Time to live</td><td>40 = 64 hops</td></tr>
+            <tr><td><span class="chip ip1"></span></td><td>23</td><td>Protocol (<code>Proto</code>)</td><td>06 = TCP, so the next header is TCP</td></tr>
+            <tr><td><span class="chip ip2"></span></td><td>24–25</td><td>Header checksum</td><td>82 78: covers these 20 bytes only</td></tr>
+            <tr><td><span class="chip ip1"></span></td><td>26–29</td><td>Source IP (<code>Src</code>)</td><td>ac 11 00 04 = 172.17.0.4</td></tr>
+            <tr><td><span class="chip ip2"></span></td><td>30–33</td><td>Destination IP (<code>Dst</code>)</td><td>8e fb 1e 71 = 142.251.30.113</td></tr>
+            <tr><td><span class="chip tcp1"></span></td><td>34–37</td><td><a class="jump" href="#/struct-tcp">Ports (<code>SrcPort</code> → <code>DstPort</code>)</a></td><td>e4 d4 → 00 50 = 58580 → 80</td></tr>
+            <tr><td><span class="chip tcp2"></span></td><td>38–41</td><td><a class="jump" href="#/struct-tcp">Sequence number (<code>Seq</code>)</a></td><td>73 7d 38 96 = the SYN’s start + 1: first byte of this HTTP</td></tr>
+            <tr><td><span class="chip tcp1"></span></td><td>42–45</td><td><a class="jump" href="#/struct-tcp">Acknowledgment (<code>Ack</code>)</a></td><td>1b 3b b8 d8 = 456898776: “got everything before the server’s first byte”</td></tr>
+            <tr><td><span class="chip tcp2"></span></td><td>46–47</td><td><a class="jump" href="#/struct-tcp">Header length + flags (<code>Flags</code>)</a></td><td>80 18: 8 × 4 = 32-byte header · 0x18 = PSH + ACK</td></tr>
+            <tr><td><span class="chip tcp1"></span></td><td>48–49</td><td><a class="jump" href="#/struct-tcp">Window (<code>Window</code>)</a></td><td>02 00 = 512</td></tr>
+            <tr><td><span class="chip tcp2"></span></td><td>50–53</td><td>Checksum + urgent</td><td>59 f3 · urgent 00 00 (unused)</td></tr>
+            <tr><td><span class="chip tcp1"></span></td><td>54–65</td><td>Options</td><td>01 01 pad · timestamps (kind 8): TSval / TSecr for RTT</td></tr>
+            <tr><td><span class="chip http1"></span></td><td>66–140</td><td>HTTP request</td><td>75 bytes from <code>sendto</code>: <code>HEAD / HTTP/1.1</code>, Host, User-Agent, Accept, blank line</td></tr>
           </tbody>
         </table>
-        <p class="soft hexnote">The green band is exactly what curl passed to <code>sendto</code>. Ethernet, IP and TCP — left of it — were added by the kernel: the complexity those syscalls hid.</p>
+        <p class="soft hexnote">curl only wrote the green part: the HTTP request. The kernel added the 66 bytes in front of it. Ethernet says which machine on the local network, IPv4 which computer on the internet, and TCP which program, plus where these bytes sit in the stream.</p>
       </section>
 
-      <section id="hex-google-301">
-        <h2>And back: a redirect you can still read</h2>
-        <p class="code-path">tcpdump · HTTP response · same connection</p>
-        <pre class="hexdump tight"><code class="nohighlight" data-noescape>00000000  <span class="eth1">02 42 ac 11 00 04 02 42  f2 e3 9b 63 08 00</span> <span class="ip1">45 00</span>  |<span class="eth1">.B.....B...c..</span><span class="ip1">E.</span>|
-00000010  <span class="ip1">02 5e 98 55 00 00 3f 06  87 c3 8e fb 1e 71 ac 11</span>  |<span class="ip1">.^.U..?......q..</span>|
-00000020  <span class="ip1">00 04</span> <span class="tcp1">00 50 e4 d4 1b 3b  b8 d8 73 7d 38 e1 80 18</span>  |<span class="ip1">..</span><span class="tcp1">.P...;..s}8...</span>|
-00000030  <span class="tcp1">10 00 55 96 00 00 01 01  08 0a d7 2a fb bf 16 a0</span>  |<span class="tcp1">..U........*....</span>|
+      <section id="hex-google-301" class="hex-dense">
+        <h2>Google’s reply comes back wrapped the same way</h2>
+        <p class="code-path">tcpdump · the response as it arrived · first 132 of 620 bytes</p>
+        <pre class="hexdump tight"><code class="nohighlight" data-noescape>00000000  <span class="eth1">02 42 ac 11 00 04</span> <span class="eth2">02 42  f2 e3 9b 63</span> <span class="eth1">08 00</span> <span class="ip1">45</span> <span class="ip2">00</span>  |<span class="eth1">.B....</span><span class="eth2">.B...c</span><span class="eth1">..</span><span class="ip1">E</span><span class="ip2">.</span>|
+00000010  <span class="ip1">02 5e</span> <span class="ip2">98 55</span> <span class="ip1">00 00</span> <span class="ip2">3f</span> <span class="ip1">06</span>  <span class="ip2">87 c3</span> <span class="ip1">8e fb 1e 71</span> <span class="ip2">ac 11</span>  |<span class="ip1">.^</span><span class="ip2">.U</span><span class="ip1">..</span><span class="ip2">?</span><span class="ip1">.</span><span class="ip2">..</span><span class="ip1">...q</span><span class="ip2">..</span>|
+00000020  <span class="ip2">00 04</span> <span class="tcp1">00 50 e4 d4</span> <span class="tcp2">1b 3b  b8 d8</span> <span class="tcp1">73 7d 38 e1</span> <span class="tcp2">80 18</span>  |<span class="ip2">..</span><span class="tcp1">.P..</span><span class="tcp2">.;..</span><span class="tcp1">s}8.</span><span class="tcp2">..</span>|
+00000030  <span class="tcp1">10 00</span> <span class="tcp2">55 96 00 00</span> <span class="tcp1">01 01  08 0a d7 2a fb bf 16 a0</span>  |<span class="tcp1">..</span><span class="tcp2">U...</span><span class="tcp1">.....*....</span>|
 00000040  <span class="tcp1">3f d2</span> <span class="http1">48 54 54 50 2f 31  2e 31 20 33 30 31 20 4d</span>  |<span class="tcp1">?.</span><span class="http1">HTTP/1.1 301 M</span>|
 00000050  <span class="http1">6f 76 65 64 20 50 65 72  6d 61 6e 65 6e 74 6c 79</span>  |<span class="http1">oved Permanently</span>|
-00000060  <span class="http1">0d 0a 4c 6f 63 61 74 69  6f 6e 3a 20 68 74 74 70</span>  |<span class="http1">..Location: http</span>|
-00000070  <span class="http1">3a 2f 2f 77 77 77 2e 67  6f 6f 67 6c 65 2e 63 6f</span>  |<span class="http1">://www.google.co</span>|
-00000080  <span class="http1">6d 2f 0d 0a 43 6f 6e 74  65 6e 74 2d 54 79 70 65</span>  |<span class="http1">m/..Content-Type</span>|
-00000090  <span class="http1">3a 20 74 65 78 74 2f 68  74 6d 6c 3b 20 63 68 61</span>  |<span class="http1">: text/html; cha</span>|
-000000a0  <span class="http1">72 73 65 74 3d 55 54 46  2d 38 0d 0a</span>              |<span class="http1">rset=UTF-8..</span>|
-000000ac</code></pre>
+00000060  <span class="http1">0d 0a</span> <span class="http2">4c 6f 63 61 74 69  6f 6e 3a 20 68 74 74 70</span>  |<span class="http1">..</span><span class="http2">Location: http</span>|
+00000070  <span class="http2">3a 2f 2f 77 77 77 2e 67  6f 6f 67 6c 65 2e 63 6f</span>  |<span class="http2">://www.google.co</span>|
+00000080  <span class="http2">6d 2f 0d 0a</span>                                       |<span class="http2">m/..</span>|
+00000084</code></pre>
         <table class="compact hexlegend">
           <thead><tr><th></th><th>Bytes</th><th>Field</th><th>Value</th></tr></thead>
           <tbody>
-            <tr><td><span class="chip eth1"></span></td><td>0–13</td><td>Ethernet header</td><td>gateway → container · reply on the same path</td></tr>
-            <tr><td><span class="chip ip1"></span></td><td>14–33</td><td>IPv4 header</td><td>src 142.251.30.113 · dst 172.17.0.4 · proto 06 = TCP</td></tr>
-            <tr><td><span class="chip tcp1"></span></td><td>34–65</td><td>TCP header</td><td>80 → 58580 · PSH+ACK</td></tr>
-            <tr><td><span class="chip http1"></span></td><td>66–171</td><td>HTTP response (start)</td><td>301 Moved Permanently · Location: http://www.google.com/</td></tr>
+            <tr><td><span class="chip eth1"></span></td><td>0–5</td><td><a class="jump" href="#/struct-eth">Destination MAC (<code>Dst</code>)</a></td><td>02:42:ac:11:00:04 = this container</td></tr>
+            <tr><td><span class="chip eth2"></span></td><td>6–11</td><td><a class="jump" href="#/struct-eth">Source MAC (<code>Src</code>)</a></td><td>02:42:f2:e3:9b:63 = the Docker bridge gateway</td></tr>
+            <tr><td><span class="chip eth1"></span></td><td>12–13</td><td><a class="jump" href="#/struct-eth">EtherType (<code>Type</code>)</a></td><td>08 00 = IPv4</td></tr>
+            <tr><td><span class="chip ip1"></span></td><td>14</td><td>Version + header length</td><td>45: 4 = IPv4, 5 × 4 = 20-byte header</td></tr>
+            <tr><td><span class="chip ip2"></span></td><td>15</td><td>Traffic class</td><td>00</td></tr>
+            <tr><td><span class="chip ip1"></span></td><td>16–17</td><td>Total length</td><td>02 5e = 606 (full packet; dump is truncated)</td></tr>
+            <tr><td><span class="chip ip2"></span></td><td>18–19</td><td>Identification</td><td>98 55</td></tr>
+            <tr><td><span class="chip ip1"></span></td><td>20–21</td><td>Flags + fragment offset</td><td>00 00: may fragment</td></tr>
+            <tr><td><span class="chip ip2"></span></td><td>22</td><td>Time to live</td><td>3f = 63: one hop already spent</td></tr>
+            <tr><td><span class="chip ip1"></span></td><td>23</td><td>Protocol (<code>Proto</code>)</td><td>06 = TCP</td></tr>
+            <tr><td><span class="chip ip2"></span></td><td>24–25</td><td>Header checksum</td><td>87 c3</td></tr>
+            <tr><td><span class="chip ip1"></span></td><td>26–29</td><td>Source IP (<code>Src</code>)</td><td>8e fb 1e 71 = 142.251.30.113</td></tr>
+            <tr><td><span class="chip ip2"></span></td><td>30–33</td><td>Destination IP (<code>Dst</code>)</td><td>ac 11 00 04 = 172.17.0.4</td></tr>
+            <tr><td><span class="chip tcp1"></span></td><td>34–37</td><td><a class="jump" href="#/struct-tcp">Ports (<code>SrcPort</code> → <code>DstPort</code>)</a></td><td>00 50 → e4 d4 = 80 → 58580</td></tr>
+            <tr><td><span class="chip tcp2"></span></td><td>38–41</td><td><a class="jump" href="#/struct-tcp">Sequence number (<code>Seq</code>)</a></td><td>1b 3b b8 d8 = 456898776: first byte of the response (= client’s earlier ack)</td></tr>
+            <tr><td><span class="chip tcp1"></span></td><td>42–45</td><td><a class="jump" href="#/struct-tcp">Acknowledgment (<code>Ack</code>)</a></td><td>73 7d 38 e1 = curl’s sequence number + 75: “I got all 75 bytes of your request”</td></tr>
+            <tr><td><span class="chip tcp2"></span></td><td>46–47</td><td><a class="jump" href="#/struct-tcp">Header length + flags (<code>Flags</code>)</a></td><td>80 18: 32-byte header · 0x18 = PSH + ACK</td></tr>
+            <tr><td><span class="chip tcp1"></span></td><td>48–49</td><td><a class="jump" href="#/struct-tcp">Window (<code>Window</code>)</a></td><td>10 00 = 4096</td></tr>
+            <tr><td><span class="chip tcp2"></span></td><td>50–53</td><td>Checksum + urgent</td><td>55 96 · urgent 00 00</td></tr>
+            <tr><td><span class="chip tcp1"></span></td><td>54–65</td><td>Options</td><td>01 01 pad · timestamps: TSval / echoed TSecr</td></tr>
+            <tr><td><span class="chip http1"></span></td><td>66–97</td><td>Status line</td><td><code>HTTP/1.1 301 Moved Permanently</code></td></tr>
+            <tr><td><span class="chip http2"></span></td><td>98–131</td><td>Location</td><td><code>Location: http://www.google.com/</code> — the redirect</td></tr>
           </tbody>
         </table>
-        <p class="soft hexnote">Same four layers, other direction. Google’s answer is still plain text on the socket: <code>301</code>, go to <code>www.google.com</code>. The dump stops after <code>Content-Type</code>; the full response was 554 bytes. curl never saw a packet — only this string.</p>
+        <p class="soft hexnote">The kernel strips Ethernet, IPv4 and TCP, and gives curl only the green part: “301, this page has moved to www.google.com”.</p>
       </section>
       <!-- /hexdump:scope -->
 
@@ -528,13 +590,13 @@ return s.writeFrame(out)</code></pre>
         <p class="code-path">captures/talk-http.jsonl · the first two frames of the capture</p>
         <p class="hexlabel"><strong>Frame 0</strong> · kernel → everyone · the question: “who has 10.0.0.2?”</p>
         <pre class="hexdump"><code class="nohighlight" data-noescape>00000000  <span class="f0">ff ff ff ff ff ff ee ea  f3 0f 57 32 08 06</span> <span class="arp1">00 01</span>  |<span class="f0">..........W2..</span><span class="arp1">..</span>|
-00000010  <span class="arp2">08 00</span> <span class="arp1">06</span> <span class="arp2">04</span> <span class="arp1">00 01</span> ee ea  f3 0f 57 32 0a 00 00 01  |<span class="arp2">..</span><span class="arp1">.</span><span class="arp2">.</span><span class="arp1">..</span>....W2....|
-00000020  00 00 00 00 00 00 0a 00  00 02                    |..........|
+00000010  <span class="arp2">08 00</span> <span class="arp1">06</span> <span class="arp2">04</span> <span class="arp1">00 01</span> <span class="f0">ee ea  f3 0f 57 32 0a 00 00 01</span>  |<span class="arp2">..</span><span class="arp1">.</span><span class="arp2">.</span><span class="arp1">..</span><span class="f0">....W2....</span>|
+00000020  <span class="f0">00 00 00 00 00 00 0a 00  00 02</span>                    |<span class="f0">..........</span>|
 0000002a</code></pre>
         <p class="hexlabel"><strong>Frame 1</strong> · mytcp → kernel · our answer: “10.0.0.2 is at 02:00:00:00:00:02”</p>
         <pre class="hexdump"><code class="nohighlight" data-noescape>00000000  <span class="f0">ee ea f3 0f 57 32 02 00  00 00 00 02 08 06</span> <span class="arp1">00 01</span>  |<span class="f0">....W2........</span><span class="arp1">..</span>|
-00000010  <span class="arp2">08 00</span> <span class="arp1">06</span> <span class="arp2">04</span> <span class="arp1">00 02</span> 02 00  00 00 00 02 0a 00 00 02  |<span class="arp2">..</span><span class="arp1">.</span><span class="arp2">.</span><span class="arp1">..</span>..........|
-00000020  ee ea f3 0f 57 32 0a 00  00 01                    |....W2....|
+00000010  <span class="arp2">08 00</span> <span class="arp1">06</span> <span class="arp2">04</span> <span class="arp1">00 02</span> <span class="f0">02 00  00 00 00 02 0a 00 00 02</span>  |<span class="arp2">..</span><span class="arp1">.</span><span class="arp2">.</span><span class="arp1">..</span><span class="f0">..........</span>|
+00000020  <span class="f0">ee ea f3 0f 57 32 0a 00  00 01</span>                    |<span class="f0">....W2....</span>|
 0000002a</code></pre>
         <table class="compact hexlegend">
           <thead><tr><th></th><th>Bytes</th><th>Field</th><th>Request (frame 0)</th><th>Reply (frame 1)</th></tr></thead>
@@ -545,31 +607,33 @@ return s.writeFrame(out)</code></pre>
             <tr><td><span class="chip arp1"></span></td><td>18</td><td>Hardware address length</td><td>06 = a MAC is 6 bytes</td><td>same</td></tr>
             <tr><td><span class="chip arp2"></span></td><td>19</td><td>Protocol address length</td><td>04 = an IPv4 address is 4 bytes</td><td>same</td></tr>
             <tr><td><span class="chip arp1"></span></td><td>20–21</td><td><a class="jump" href="#/struct-arp">Operation (<code>Op</code>)</a></td><td>00 01 = request</td><td>00 02 = reply</td></tr>
+            <tr><td><span class="chip f0"></span></td><td>22–41</td><td><a class="jump" href="#/hex-arp-addr">Addresses</a></td><td>SHA, SPA, THA, TPA — next slide</td><td>same four fields, filled in</td></tr>
           </tbody>
         </table>
-        <p class="soft hexnote">One packet format for both directions: these six fields match byte for byte, except the operation.</p>
+        <p class="soft hexnote">One packet format for both directions: the header fields match byte for byte, except the operation.</p>
       </section>
 
       <section id="hex-arp-addr">
         <h2>A real ARP request and reply: the addresses</h2>
         <p class="code-path">captures/talk-http.jsonl · the first two frames of the capture</p>
         <p class="hexlabel"><strong>Frame 0</strong> · kernel → everyone · the question: “who has 10.0.0.2?”</p>
-        <pre class="hexdump"><code class="nohighlight" data-noescape>00000000  ff ff ff ff ff ff ee ea  f3 0f 57 32 08 06 00 01  |..........W2....|
-00000010  08 00 06 04 00 01 <span class="arp2">ee ea  f3 0f 57 32</span> <span class="arp1">0a 00 00 01</span>  |......<span class="arp2">....W2</span><span class="arp1">....</span>|
-00000020  <span class="arp2">00 00 00 00 00 00</span> <span class="arp1">0a 00  00 02</span>                    |<span class="arp2">......</span><span class="arp1">....</span>|
+        <pre class="hexdump"><code class="nohighlight" data-noescape>00000000  <span class="f0">ff ff ff ff ff ff ee ea  f3 0f 57 32 08 06 00 01</span>  |<span class="f0">..........W2....</span>|
+00000010  <span class="f0">08 00 06 04 00 01</span> <span class="arp1">ee ea  f3 0f 57 32</span> <span class="arp2">0a 00 00 01</span>  |<span class="f0">......</span><span class="arp1">....W2</span><span class="arp2">....</span>|
+00000020  <span class="arp1">00 00 00 00 00 00</span> <span class="arp2">0a 00  00 02</span>                    |<span class="arp1">......</span><span class="arp2">....</span>|
 0000002a</code></pre>
         <p class="hexlabel"><strong>Frame 1</strong> · mytcp → kernel · our answer: “10.0.0.2 is at 02:00:00:00:00:02”</p>
-        <pre class="hexdump"><code class="nohighlight" data-noescape>00000000  ee ea f3 0f 57 32 02 00  00 00 00 02 08 06 00 01  |....W2..........|
-00000010  08 00 06 04 00 02 <span class="arp2">02 00  00 00 00 02</span> <span class="arp1">0a 00 00 02</span>  |......<span class="arp2">......</span><span class="arp1">....</span>|
-00000020  <span class="arp2">ee ea f3 0f 57 32</span> <span class="arp1">0a 00  00 01</span>                    |<span class="arp2">....W2</span><span class="arp1">....</span>|
+        <pre class="hexdump"><code class="nohighlight" data-noescape>00000000  <span class="f0">ee ea f3 0f 57 32 02 00  00 00 00 02 08 06 00 01</span>  |<span class="f0">....W2..........</span>|
+00000010  <span class="f0">08 00 06 04 00 02</span> <span class="arp1">02 00  00 00 00 02</span> <span class="arp2">0a 00 00 02</span>  |<span class="f0">......</span><span class="arp1">......</span><span class="arp2">....</span>|
+00000020  <span class="arp1">ee ea f3 0f 57 32</span> <span class="arp2">0a 00  00 01</span>                    |<span class="arp1">....W2</span><span class="arp2">....</span>|
 0000002a</code></pre>
         <table class="compact hexlegend">
           <thead><tr><th></th><th>Bytes</th><th>Field</th><th>Request (frame 0)</th><th>Reply (frame 1)</th></tr></thead>
           <tbody>
-            <tr><td><span class="chip arp2"></span></td><td>22–27</td><td><a class="jump" href="#/struct-arp">Sender MAC (<code>SHA</code>)</a></td><td>ee:ea:f3:0f:57:32</td><td><strong>02:00:00:00:00:02</strong> ← the answer</td></tr>
-            <tr><td><span class="chip arp1"></span></td><td>28–31</td><td><a class="jump" href="#/struct-arp">Sender IP (<code>SPA</code>)</a></td><td>0a 00 00 01 = 10.0.0.1</td><td>0a 00 00 02 = 10.0.0.2</td></tr>
-            <tr><td><span class="chip arp2"></span></td><td>32–37</td><td><a class="jump" href="#/struct-arp">Target MAC (<code>THA</code>)</a></td><td>00:00:00:00:00:00 = unknown (the question)</td><td>ee:ea:f3:0f:57:32</td></tr>
-            <tr><td><span class="chip arp1"></span></td><td>38–41</td><td><a class="jump" href="#/struct-arp">Target IP (<code>TPA</code>)</a></td><td>0a 00 00 02 = 10.0.0.2</td><td>0a 00 00 01 = 10.0.0.1</td></tr>
+            <tr><td><span class="chip f0"></span></td><td>0–21</td><td><a class="jump" href="#/hex-arp-header">Ethernet + ARP header</a></td><td>broadcast request · Op = 1</td><td>unicast reply · Op = 2</td></tr>
+            <tr><td><span class="chip arp1"></span></td><td>22–27</td><td><a class="jump" href="#/struct-arp">Sender MAC (<code>SHA</code>)</a></td><td>ee:ea:f3:0f:57:32</td><td><strong>02:00:00:00:00:02</strong> ← the answer</td></tr>
+            <tr><td><span class="chip arp2"></span></td><td>28–31</td><td><a class="jump" href="#/struct-arp">Sender IP (<code>SPA</code>)</a></td><td>0a 00 00 01 = 10.0.0.1</td><td>0a 00 00 02 = 10.0.0.2</td></tr>
+            <tr><td><span class="chip arp1"></span></td><td>32–37</td><td><a class="jump" href="#/struct-arp">Target MAC (<code>THA</code>)</a></td><td>00:00:00:00:00:00 = unknown (the question)</td><td>ee:ea:f3:0f:57:32</td></tr>
+            <tr><td><span class="chip arp2"></span></td><td>38–41</td><td><a class="jump" href="#/struct-arp">Target IP (<code>TPA</code>)</a></td><td>0a 00 00 02 = 10.0.0.2</td><td>0a 00 00 01 = 10.0.0.1</td></tr>
           </tbody>
         </table>
         <p class="soft hexnote">The reply swaps sender and target, and fills in the one thing the request didn’t know: our MAC.</p>
@@ -609,17 +673,18 @@ return s.sendIPv4(srcMAC, pkt.Src, ip4.ProtoICMP, reply.Marshal())</code></pre>
       <section id="hex-ipv4">
         <h2>A real ping: the IPv4 header</h2>
         <p class="code-path">captures/talk-http.jsonl · frame 2 (from <code>ping -c 1 10.0.0.2</code>)</p>
-        <pre class="hexdump"><code class="nohighlight" data-noescape>00000000  02 00 00 00 00 02 ee ea  f3 0f 57 32 08 00 <span class="ip1">45</span> <span class="ip2">00</span>  |..........W2..<span class="ip1">E</span><span class="ip2">.</span>|
+        <pre class="hexdump"><code class="nohighlight" data-noescape>00000000  <span class="f0">02 00 00 00 00 02 ee ea  f3 0f 57 32 08 00</span> <span class="ip1">45</span> <span class="ip2">00</span>  |<span class="f0">..........W2..</span><span class="ip1">E</span><span class="ip2">.</span>|
 00000010  <span class="ip1">00 54</span> <span class="ip2">c6 d3</span> <span class="ip1">40 00</span> <span class="ip2">40</span> <span class="ip1">01</span>  <span class="ip2">5f d3</span> <span class="ip1">0a 00 00 01</span> <span class="ip2">0a 00</span>  |<span class="ip1">.T</span><span class="ip2">..</span><span class="ip1">@.</span><span class="ip2">@</span><span class="ip1">.</span><span class="ip2">_.</span><span class="ip1">....</span><span class="ip2">..</span>|
-00000020  <span class="ip2">00 02</span> 08 00 40 fe 00 07  00 01 80 39 bc 6a 00 00  |<span class="ip2">..</span>..@......9.j..|
-00000030  00 00 b9 82 02 00 00 00  00 00 10 11 12 13 14 15  |................|
-00000040  16 17 18 19 1a 1b 1c 1d  1e 1f 20 21 22 23 24 25  |.......... !"#$%|
-00000050  26 27 28 29 2a 2b 2c 2d  2e 2f 30 31 32 33 34 35  |&amp;'()*+,-./012345|
-00000060  36 37                                             |67|
+00000020  <span class="ip2">00 02</span> <span class="f0">08 00 40 fe 00 07  00 01 80 39 bc 6a 00 00</span>  |<span class="ip2">..</span><span class="f0">..@......9.j..</span>|
+00000030  <span class="f0">00 00 b9 82 02 00 00 00  00 00 10 11 12 13 14 15</span>  |<span class="f0">................</span>|
+00000040  <span class="f0">16 17 18 19 1a 1b 1c 1d  1e 1f 20 21 22 23 24 25</span>  |<span class="f0">.......... !"#$%</span>|
+00000050  <span class="f0">26 27 28 29 2a 2b 2c 2d  2e 2f 30 31 32 33 34 35</span>  |<span class="f0">&amp;'()*+,-./012345</span>|
+00000060  <span class="f0">36 37</span>                                             |<span class="f0">67</span>|
 00000062</code></pre>
         <table class="compact hexlegend">
           <thead><tr><th></th><th>Bytes</th><th>Field</th><th>Value</th></tr></thead>
           <tbody>
+            <tr><td><span class="chip f0"></span></td><td>0–13</td><td><a class="jump" href="#/hex-eth">Ethernet header</a></td><td>type 08 00 = IPv4</td></tr>
             <tr><td><span class="chip ip1"></span></td><td>14</td><td>Version + header length</td><td>45: 4 = IPv4, 5 × 4 = 20-byte header</td></tr>
             <tr><td><span class="chip ip2"></span></td><td>15</td><td>Traffic class (DSCP/ECN)</td><td>00 = ordinary traffic</td></tr>
             <tr><td><span class="chip ip1"></span></td><td>16–17</td><td>Total length</td><td>00 54 = 84 bytes: this header plus the ICMP message</td></tr>
@@ -630,17 +695,17 @@ return s.sendIPv4(srcMAC, pkt.Src, ip4.ProtoICMP, reply.Marshal())</code></pre>
             <tr><td><span class="chip ip2"></span></td><td>24–25</td><td>Header checksum</td><td>5f d3: covers these 20 bytes only</td></tr>
             <tr><td><span class="chip ip1"></span></td><td>26–29</td><td>Source IP (<code>Src</code>)</td><td>0a 00 00 01 = 10.0.0.1</td></tr>
             <tr><td><span class="chip ip2"></span></td><td>30–33</td><td>Destination IP (<code>Dst</code>)</td><td>0a 00 00 02 = 10.0.0.2</td></tr>
+            <tr><td><span class="chip f0"></span></td><td>34–97</td><td><a class="jump" href="#/hex-icmp">ICMP message</a></td><td>echo request — next slide</td></tr>
           </tbody>
         </table>
-        <p class="soft hexnote">Grey: the <a class="jump" href="#/hex-eth">Ethernet header</a> (bytes 0–13, type 08 00 = IPv4) and the <a class="jump" href="#/hex-icmp">ICMP message</a> (bytes 34–97, next slide).</p>
       </section>
 
       <section id="hex-icmp">
         <h2>A real ping: the ICMP message</h2>
-        <p class="code-path">captures/talk-http.jsonl · frame 2, bytes 34–97</p>
-        <pre class="hexdump"><code class="nohighlight" data-noescape>00000000  02 00 00 00 00 02 ee ea  f3 0f 57 32 08 00 45 00  |..........W2..E.|
-00000010  00 54 c6 d3 40 00 40 01  5f d3 0a 00 00 01 0a 00  |.T..@.@._.......|
-00000020  00 02 <span class="icmp1">08</span> <span class="icmp2">00</span> <span class="icmp1">40 fe</span> <span class="icmp2">00 07</span>  <span class="icmp1">00 01</span> <span class="icmp2">80 39 bc 6a 00 00</span>  |..<span class="icmp1">.</span><span class="icmp2">.</span><span class="icmp1">@.</span><span class="icmp2">..</span><span class="icmp1">..</span><span class="icmp2">.9.j..</span>|
+        <p class="code-path">captures/talk-http.jsonl · frame 2 (same ping)</p>
+        <pre class="hexdump"><code class="nohighlight" data-noescape>00000000  <span class="f0">02 00 00 00 00 02 ee ea  f3 0f 57 32 08 00 45 00</span>  |<span class="f0">..........W2..E.</span>|
+00000010  <span class="f0">00 54 c6 d3 40 00 40 01  5f d3 0a 00 00 01 0a 00</span>  |<span class="f0">.T..@.@._.......</span>|
+00000020  <span class="f0">00 02</span> <span class="icmp1">08</span> <span class="icmp2">00</span> <span class="icmp1">40 fe</span> <span class="icmp2">00 07</span>  <span class="icmp1">00 01</span> <span class="icmp2">80 39 bc 6a 00 00</span>  |<span class="f0">..</span><span class="icmp1">.</span><span class="icmp2">.</span><span class="icmp1">@.</span><span class="icmp2">..</span><span class="icmp1">..</span><span class="icmp2">.9.j..</span>|
 00000030  <span class="icmp2">00 00 b9 82 02 00 00 00  00 00</span> <span class="icmp1">10 11 12 13 14 15</span>  |<span class="icmp2">..........</span><span class="icmp1">......</span>|
 00000040  <span class="icmp1">16 17 18 19 1a 1b 1c 1d  1e 1f 20 21 22 23 24 25</span>  |<span class="icmp1">.......... !"#$%</span>|
 00000050  <span class="icmp1">26 27 28 29 2a 2b 2c 2d  2e 2f 30 31 32 33 34 35</span>  |<span class="icmp1">&amp;'()*+,-./012345</span>|
@@ -649,6 +714,7 @@ return s.sendIPv4(srcMAC, pkt.Src, ip4.ProtoICMP, reply.Marshal())</code></pre>
         <table class="compact hexlegend">
           <thead><tr><th></th><th>Bytes</th><th>Field</th><th>Value</th></tr></thead>
           <tbody>
+            <tr><td><span class="chip f0"></span></td><td>0–33</td><td><a class="jump" href="#/hex-ipv4">Ethernet + IPv4 headers</a></td><td>as on the previous slide · proto 01 = ICMP</td></tr>
             <tr><td><span class="chip icmp1"></span></td><td>34</td><td>Type (<code>Type</code>)</td><td>08 = echo request (a reply is 00)</td></tr>
             <tr><td><span class="chip icmp2"></span></td><td>35</td><td>Code</td><td>00: echo has no sub-types</td></tr>
             <tr><td><span class="chip icmp1"></span></td><td>36–37</td><td>Checksum</td><td>40 fe: covers the whole ICMP message</td></tr>
@@ -738,7 +804,7 @@ sequenceDiagram
 
       <section id="hex-tcp-options">
         <h2>The SYN’s options, and why we ignore them</h2>
-        <p class="code-path">captures/talk-http.jsonl · frame 4, bytes 54–73</p>
+        <p class="code-path">captures/talk-http.jsonl · frame 4 · same SYN</p>
         <pre class="hexdump"><code class="nohighlight" data-noescape>00000000  <span class="f0">02 00 00 00 00 02 ee ea  f3 0f 57 32 08 00 45 00</span>  |<span class="f0">..........W2..E.</span>|
 00000010  <span class="f0">00 3c 56 ea 40 00 40 06  cf cf 0a 00 00 01 0a 00</span>  |<span class="f0">.&lt;V.@.@.........</span>|
 00000020  <span class="f0">00 02 c6 8a 00 50 13 e8  5a 66 00 00 00 00 a0 02</span>  |<span class="f0">.....P..Zf......</span>|

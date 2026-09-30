@@ -1,4 +1,4 @@
-# Reveal deck — Standing on Giants
+# Reveal deck — From TAP to curl
 
 Live (GitHub Pages, nothing to install):
 

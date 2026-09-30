@@ -125,10 +125,11 @@ def b(name):
     return bytes.fromhex(FRAMES[name])
 
 
-def section(sid, title, path, *parts):
+def section(sid, title, path, *parts, cls=""):
     inner = "\n".join(parts)
+    cls_attr = f' class="{cls}"' if cls else ""
     return (
-        f'      <section id="{sid}">\n'
+        f'      <section id="{sid}"{cls_attr}>\n'
         f"        <h2>{title}</h2>\n"
         f'        <p class="code-path">{path}</p>\n'
         f"{inner}\n"
@@ -149,7 +150,7 @@ ETH_READ = shade([
     (14, 42, "f0", J(f"Payload ({C('Payload')})", "hex-arp-header"), "28 bytes: the ARP message, unpacked in the ARP section"),
 ])
 
-ARP = shade([
+ARP_HEADER = shade([
     (0, 14, "f0", J("Ethernet header", "hex-eth"),
      "to ff:ff:ff:ff:ff:ff (everyone), from ee:ea:f3:0f:57:32",
      "to ee:ea:f3:0f:57:32 (only the asker), from 02:00:00:00:00:02"),
@@ -158,6 +159,15 @@ ARP = shade([
     (18, 19, "arp", "Hardware address length", "06 = a MAC is 6 bytes", "same"),
     (19, 20, "arp", "Protocol address length", "04 = an IPv4 address is 4 bytes", "same"),
     (20, 22, "arp", J(f"Operation ({C('Op')})", "struct-arp"), "00 01 = request", "00 02 = reply"),
+    (22, 42, "f0", J("Addresses", "hex-arp-addr"),
+     "SHA, SPA, THA, TPA — next slide",
+     "same four fields, filled in"),
+])
+
+ARP_ADDR = shade([
+    (0, 22, "f0", J("Ethernet + ARP header", "hex-arp-header"),
+     "broadcast request · Op = 1",
+     "unicast reply · Op = 2"),
     (22, 28, "arp", J(f"Sender MAC ({C('SHA')})", "struct-arp"), "ee:ea:f3:0f:57:32", "<strong>02:00:00:00:00:02</strong> ← the answer"),
     (28, 32, "arp", J(f"Sender IP ({C('SPA')})", "struct-arp"), "0a 00 00 01 = 10.0.0.1", "0a 00 00 02 = 10.0.0.2"),
     (32, 38, "arp", J(f"Target MAC ({C('THA')})", "struct-arp"), "00:00:00:00:00:00 = unknown (the question)", "ee:ea:f3:0f:57:32"),
@@ -165,6 +175,7 @@ ARP = shade([
 ])
 
 IPV4 = shade([
+    (0, 14, "f0", J("Ethernet header", "hex-eth"), "type 08 00 = IPv4"),
     (14, 15, "ip", "Version + header length", "45: 4 = IPv4, 5 × 4 = 20-byte header"),
     (15, 16, "ip", "Traffic class (DSCP/ECN)", "00 = ordinary traffic"),
     (16, 18, "ip", "Total length", "00 54 = 84 bytes: this header plus the ICMP message"),
@@ -175,9 +186,11 @@ IPV4 = shade([
     (24, 26, "ip", "Header checksum", "5f d3: covers these 20 bytes only"),
     (26, 30, "ip", f"Source IP ({C('Src')})", "0a 00 00 01 = 10.0.0.1"),
     (30, 34, "ip", f"Destination IP ({C('Dst')})", "0a 00 00 02 = 10.0.0.2"),
+    (34, 98, "f0", J("ICMP message", "hex-icmp"), "echo request — next slide"),
 ])
 
 ICMP = shade([
+    (0, 34, "f0", J("Ethernet + IPv4 headers", "hex-ipv4"), "as on the previous slide · proto 01 = ICMP"),
     (34, 35, "icmp", f"Type ({C('Type')})", "08 = echo request (a reply is 00)"),
     (35, 36, "icmp", "Code", "00: echo has no sub-types"),
     (36, 38, "icmp", "Checksum", "40 fe: covers the whole ICMP message"),
@@ -260,19 +273,68 @@ READ_CMD = (
 
 SLIDES = {}
 
-# Plain HTTP to google.com:80 — readable request and 301 redirect.
+# Plain HTTP to google.com:80 — same field breakdown style as hex-http (TCP_GET).
 GOOGLE_HTTP_REQ = shade([
-    (0, 14, "eth", "Ethernet header", "container → gateway · type 08 00 = IPv4"),
-    (14, 34, "ip", "IPv4 header", "src 172.17.0.4 · dst 142.251.30.113 · proto 06 = TCP"),
-    (34, 66, "tcp", "TCP header", "58580 → 80 · PSH+ACK · 32 bytes including options"),
-    (66, 141, "http", "HTTP request", "exactly the 75 bytes curl passed to sendto — readable in the ASCII column"),
+    (0, 6, "eth", J(f"Destination MAC ({C('Dst')})", "struct-eth"),
+     "02:42:f2:e3:9b:63 = the Docker bridge gateway"),
+    (6, 12, "eth", J(f"Source MAC ({C('Src')})", "struct-eth"),
+     "02:42:ac:11:00:04 = this container"),
+    (12, 14, "eth", J(f"EtherType ({C('Type')})", "struct-eth"), "08 00 = IPv4"),
+    (14, 15, "ip", "Version + header length", "45: 4 = IPv4, 5 × 4 = 20-byte header"),
+    (15, 16, "ip", "Traffic class", "00 = ordinary traffic"),
+    (16, 18, "ip", "Total length", "00 7f = 127: this header + TCP + HTTP"),
+    (18, 20, "ip", "Identification", "5e 7f"),
+    (20, 22, "ip", "Flags + fragment offset", "40 00 = don’t fragment"),
+    (22, 23, "ip", "Time to live", "40 = 64 hops"),
+    (23, 24, "ip", f"Protocol ({C('Proto')})", f"06 = TCP, so the next header is TCP"),
+    (24, 26, "ip", "Header checksum", "82 78: covers these 20 bytes only"),
+    (26, 30, "ip", f"Source IP ({C('Src')})", "ac 11 00 04 = 172.17.0.4"),
+    (30, 34, "ip", f"Destination IP ({C('Dst')})", "8e fb 1e 71 = 142.251.30.113"),
+    (34, 38, "tcp", T(f"Ports ({C('SrcPort')} → {C('DstPort')})"),
+     "e4 d4 → 00 50 = 58580 → 80"),
+    (38, 42, "tcp", T(f"Sequence number ({C('Seq')})"),
+     "73 7d 38 96 = the SYN’s start + 1: first byte of this HTTP"),
+    (42, 46, "tcp", T(f"Acknowledgment ({C('Ack')})"),
+     "1b 3b b8 d8 = 456898776: “got everything before the server’s first byte”"),
+    (46, 48, "tcp", T(f"Header length + flags ({C('Flags')})"),
+     "80 18: 8 × 4 = 32-byte header · 0x18 = PSH + ACK"),
+    (48, 50, "tcp", T(f"Window ({C('Window')})"), "02 00 = 512"),
+    (50, 54, "tcp", "Checksum + urgent", "59 f3 · urgent 00 00 (unused)"),
+    (54, 66, "tcp", "Options", "01 01 pad · timestamps (kind 8): TSval / TSecr for RTT"),
+    (66, 141, "http", "HTTP request",
+     f"75 bytes from <code>sendto</code>: {C('HEAD / HTTP/1.1')}, Host, User-Agent, Accept, blank line"),
 ])
 
+# Dump stops after Location (byte 132); full IP length was 606 / HTTP 554.
 GOOGLE_HTTP_301 = shade([
-    (0, 14, "eth", "Ethernet header", "gateway → container · reply on the same path"),
-    (14, 34, "ip", "IPv4 header", "src 142.251.30.113 · dst 172.17.0.4 · proto 06 = TCP"),
-    (34, 66, "tcp", "TCP header", "80 → 58580 · PSH+ACK"),
-    (66, 172, "http", "HTTP response (start)", "301 Moved Permanently · Location: http://www.google.com/"),
+    (0, 6, "eth", J(f"Destination MAC ({C('Dst')})", "struct-eth"),
+     "02:42:ac:11:00:04 = this container"),
+    (6, 12, "eth", J(f"Source MAC ({C('Src')})", "struct-eth"),
+     "02:42:f2:e3:9b:63 = the Docker bridge gateway"),
+    (12, 14, "eth", J(f"EtherType ({C('Type')})", "struct-eth"), "08 00 = IPv4"),
+    (14, 15, "ip", "Version + header length", "45: 4 = IPv4, 5 × 4 = 20-byte header"),
+    (15, 16, "ip", "Traffic class", "00"),
+    (16, 18, "ip", "Total length", "02 5e = 606 (full packet; dump is truncated)"),
+    (18, 20, "ip", "Identification", "98 55"),
+    (20, 22, "ip", "Flags + fragment offset", "00 00: may fragment"),
+    (22, 23, "ip", "Time to live", "3f = 63: one hop already spent"),
+    (23, 24, "ip", f"Protocol ({C('Proto')})", "06 = TCP"),
+    (24, 26, "ip", "Header checksum", "87 c3"),
+    (26, 30, "ip", f"Source IP ({C('Src')})", "8e fb 1e 71 = 142.251.30.113"),
+    (30, 34, "ip", f"Destination IP ({C('Dst')})", "ac 11 00 04 = 172.17.0.4"),
+    (34, 38, "tcp", T(f"Ports ({C('SrcPort')} → {C('DstPort')})"),
+     "00 50 → e4 d4 = 80 → 58580"),
+    (38, 42, "tcp", T(f"Sequence number ({C('Seq')})"),
+     "1b 3b b8 d8 = 456898776: first byte of the response (= client’s earlier ack)"),
+    (42, 46, "tcp", T(f"Acknowledgment ({C('Ack')})"),
+     "73 7d 38 e1 = curl’s sequence number + 75: “I got all 75 bytes of your request”"),
+    (46, 48, "tcp", T(f"Header length + flags ({C('Flags')})"),
+     "80 18: 32-byte header · 0x18 = PSH + ACK"),
+    (48, 50, "tcp", T(f"Window ({C('Window')})"), "10 00 = 4096"),
+    (50, 54, "tcp", "Checksum + urgent", "55 96 · urgent 00 00"),
+    (54, 66, "tcp", "Options", "01 01 pad · timestamps: TSval / echoed TSecr"),
+    (66, 98, "http", "Status line", C("HTTP/1.1 301 Moved Permanently")),
+    (98, 132, "http", "Location", f"{C('Location: http://www.google.com/')} — the redirect"),
 ])
 
 STRACE_SLIDE = """      <section id="strace-curl">
@@ -288,7 +350,7 @@ sendto(5, "HEAD / HTTP/1.1\\r\\nHost: google.com\\r\\n"..., 75) = 75
 recvfrom(5, "HTTP/1.1 301 Moved Permanently\\r\\n"
             "Location: http://www.google.com/\\r\\n"..., ...) = 554
 close(5) = 0</code></pre>
-        <p class="fragment soft">curl only ever spoke HTTP text. Four calls — open, connect, send, receive — and everything underneath stays on the other side of the API.</p>
+        <p class="fragment soft">curl only sent and received HTTP text. The handshake, the headers and any resends all happened inside the kernel, where curl can’t see them. The next two slides show what that looks like on the wire.</p>
         <aside class="notes">
           Real capture from a Debian container. EINPROGRESS / poll / DNS omitted for clarity.
           Point at connect: SYN/SYN+ACK/ACK happened with no syscall per packet.
@@ -303,23 +365,25 @@ SLIDES["scope"] = (
     + "\n\n"
     + section(
         "hex-google-req",
-        "sendto said this; the wire said that",
-        "tcpdump · first payload after the handshake · curl → google.com:80",
+        "curl handed over 75 bytes. The kernel sent 141.",
+        "tcpdump · the request as it left the container · curl → google.com:80",
         "        " + dump(b("google-http-req"), spans(GOOGLE_HTTP_REQ), cls="hexdump tight"),
         table(["Field", "Value"], GOOGLE_HTTP_REQ),
-        note("The green band is exactly what curl passed to <code>sendto</code>. "
-             "Ethernet, IP and TCP — left of it — were added by the kernel: the complexity those syscalls hid."),
+        note("curl only wrote the green part: the HTTP request. The kernel added the 66 bytes in front of it. "
+             "Ethernet says which machine on the local network, IPv4 which computer on the internet, "
+             "and TCP which program, plus where these bytes sit in the stream."),
+        cls="hex-dense",
     )
     + "\n\n"
     + section(
         "hex-google-301",
-        "And back: a redirect you can still read",
-        "tcpdump · HTTP response · same connection",
-        "        " + dump(b("google-http-301"), spans(GOOGLE_HTTP_301), cls="hexdump tight"),
+        "Google’s reply comes back wrapped the same way",
+        "tcpdump · the response as it arrived · first 132 of 620 bytes",
+        "        " + dump(b("google-http-301")[:132], spans(GOOGLE_HTTP_301), cls="hexdump tight"),
         table(["Field", "Value"], GOOGLE_HTTP_301),
-        note("Same four layers, other direction. Google’s answer is still plain text on the socket: "
-             "<code>301</code>, go to <code>www.google.com</code>. The dump stops after "
-             "<code>Content-Type</code>; the full response was 554 bytes. curl never saw a packet — only this string."),
+        note("The kernel strips Ethernet, IPv4 and TCP, and gives curl only the green part: "
+             "“301, this page has moved to www.google.com”."),
+        cls="hex-dense",
     ),
 )
 
@@ -347,11 +411,11 @@ SLIDES["arp"] = (
         "A real ARP request and reply: the header",
         "captures/talk-http.jsonl · the first two frames of the capture",
         label("<strong>Frame 0</strong> · kernel → everyone · the question: “who has 10.0.0.2?”"),
-        "        " + dump(b("arp-req"), spans(ARP[:6])),
+        "        " + dump(b("arp-req"), spans(ARP_HEADER)),
         label("<strong>Frame 1</strong> · mytcp → kernel · our answer: “10.0.0.2 is at 02:00:00:00:00:02”"),
-        "        " + dump(b("arp-rep"), spans(ARP[:6])),
-        table(["Field", "Request (frame 0)", "Reply (frame 1)"], ARP[:6]),
-        note("One packet format for both directions: these six fields match byte for byte, except the operation."),
+        "        " + dump(b("arp-rep"), spans(ARP_HEADER)),
+        table(["Field", "Request (frame 0)", "Reply (frame 1)"], ARP_HEADER),
+        note("One packet format for both directions: the header fields match byte for byte, except the operation."),
     )
     + "\n\n"
     + section(
@@ -359,10 +423,10 @@ SLIDES["arp"] = (
         "A real ARP request and reply: the addresses",
         "captures/talk-http.jsonl · the first two frames of the capture",
         label("<strong>Frame 0</strong> · kernel → everyone · the question: “who has 10.0.0.2?”"),
-        "        " + dump(b("arp-req"), spans(ARP[6:])),
+        "        " + dump(b("arp-req"), spans(ARP_ADDR)),
         label("<strong>Frame 1</strong> · mytcp → kernel · our answer: “10.0.0.2 is at 02:00:00:00:00:02”"),
-        "        " + dump(b("arp-rep"), spans(ARP[6:])),
-        table(["Field", "Request (frame 0)", "Reply (frame 1)"], ARP[6:]),
+        "        " + dump(b("arp-rep"), spans(ARP_ADDR)),
+        table(["Field", "Request (frame 0)", "Reply (frame 1)"], ARP_ADDR),
         note("The reply swaps sender and target, and fills in the one thing the request didn’t know: our MAC."),
     ),
 )
@@ -375,14 +439,12 @@ SLIDES["ping"] = (
         "captures/talk-http.jsonl · frame 2 (from <code>ping -c 1 10.0.0.2</code>)",
         "        " + dump(b("ping"), spans(IPV4)),
         table(["Field", "Value"], IPV4),
-        note(f"Grey: the {J('Ethernet header', 'hex-eth')} (bytes 0–13, type 08 00 = IPv4) "
-             f"and the {J('ICMP message', 'hex-icmp')} (bytes 34–97, next slide)."),
     )
     + "\n\n"
     + section(
         "hex-icmp",
         "A real ping: the ICMP message",
-        "captures/talk-http.jsonl · frame 2, bytes 34–97",
+        "captures/talk-http.jsonl · frame 2 (same ping)",
         "        " + dump(b("ping"), spans(ICMP)),
         table(["Field", "Value"], ICMP),
         note("Headers are big-endian, but ping writes its send time in the CPU’s own order (little-endian on x86 and ARM), "
@@ -404,7 +466,7 @@ SLIDES["tcp"] = (
     + section(
         "hex-tcp-options",
         "The SYN’s options, and why we ignore them",
-        "captures/talk-http.jsonl · frame 4, bytes 54–73",
+        "captures/talk-http.jsonl · frame 4 · same SYN",
         "        " + dump(b("syn"), spans(TCP_OPTS)),
         table(["Option", "Bytes on the wire"], TCP_OPTS),
         note("Options are offers. Our SYN+ACK sends none back, so the kernel on curl’s side turns off SACK, timestamps and "

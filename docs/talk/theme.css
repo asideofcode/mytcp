@@ -72,6 +72,16 @@ html.reveal-full-page,
   color: var(--muted);
 }
 
+.reveal .tagline {
+  font-family: "Fraunces", Georgia, serif;
+  font-style: italic;
+  font-size: 0.6em;
+  color: var(--accent);
+  max-width: 30em;
+  margin: 0.4em auto 0;
+  line-height: 1.4;
+}
+
 .reveal .section-label {
   font-family: "IBM Plex Mono", monospace;
   font-size: 0.4em;
@@ -394,6 +404,41 @@ html.reveal-full-page,
   margin-bottom: 0.3em;
 }
 
+/* preamble google frames: long hex + field table on one slide */
+.reveal .slides section.hex-dense h2 {
+  font-size: 1.15em;
+  margin-bottom: 0.35em;
+  padding-bottom: 0.15em;
+}
+
+.reveal .slides section.hex-dense .code-path {
+  font-size: 0.4em;
+  margin: 0 0 0.25em;
+}
+
+.reveal .slides section.hex-dense pre.hexdump.tight {
+  font-size: 0.34em;
+  line-height: 1.2;
+  padding: 0.35em 0.7em;
+  margin-bottom: 0.15em;
+}
+
+.reveal .slides section.hex-dense table.compact.hexlegend {
+  font-size: 0.34em;
+  margin: 0.15em 0;
+}
+
+.reveal .slides section.hex-dense table.compact.hexlegend td,
+.reveal .slides section.hex-dense table.compact.hexlegend th {
+  padding: 0.1em 0.45em;
+}
+
+.reveal .slides section.hex-dense .hexnote {
+  font-size: 0.42em;
+  margin-top: 0.15em;
+  max-width: 88%;
+}
+
 .reveal .chip {
   display: inline-block;
   width: 0.9em;
@@ -626,6 +671,10 @@ html.reveal-full-page,
 
 .reveal .mermaid.spread svg {
   width: 840px;
+}
+
+.reveal .mermaid.journey svg {
+  width: 1180px;
 }
 
 /* three dumps on one slide (the TCP handshake) */
