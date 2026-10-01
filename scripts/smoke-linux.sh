@@ -26,6 +26,16 @@ kill $pid
 wait $pid 2>/dev/null || true
 sleep 0.2
 
+# --- HTTP via Go's net/http.Server on the same Listener ---
+/tmp/mytcp -i tap0 -app http-go -dump=false >/tmp/mytcp.log 2>&1 &
+pid=$!
+sleep 0.4
+curl -fsS --max-time 2 http://10.0.0.2/ | grep -q mytcp
+echo "http-go smoke ok"
+kill $pid
+wait $pid 2>/dev/null || true
+sleep 0.2
+
 # --- HTTPS stdlib (crypto/tls) ---
 /tmp/mytcp -i tap0 -app https -dump=false >/tmp/mytcp.log 2>&1 &
 pid=$!

@@ -8,7 +8,8 @@
 //
 // Typical invocations:
 //
-//	mytcp                               # HTTP on 10.0.0.2:80, host side 10.0.0.1/24
+//	mytcp                               # HTTP on 10.0.0.2:80 (our http1 on net.Listener)
+//	mytcp -app http-go                  # same Listener, Go's net/http.Server
 //	mytcp -app echo                     # TCP echo on port 7
 //	mytcp -app https                    # HTTPS on :443 via crypto/tls
 //	mytcp -app https-diy                # HTTPS on :443 via our own mintls (TLS 1.2)
@@ -24,6 +25,7 @@ import (
 	"flag"
 	"log"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -55,7 +57,7 @@ func main() {
 		hostCIDR = flag.String("host", "10.0.0.1/24", "kernel-side address on the TAP (empty = skip)")
 		macStr   = flag.String("mac", "02:00:00:00:00:02", "MAC address we claim")
 		tcpPort  = flag.Uint("tcp", 0, "TCP listen port (0 = default: 80 http, 443 https, 7 echo)")
-		appName  = flag.String("app", "http", "TCP app: http | https | https-diy | echo")
+		appName  = flag.String("app", "http", "TCP app: http | http-go | https | https-diy | echo")
 		doDump   = flag.Bool("dump", true, "layered onion decode of RX/TX frames")
 		dumpOnly = flag.Bool("dump-only", false, "Stage 0: decode frames only, no replies")
 		pcapPath = flag.String("pcap", "captures/latest", "capture stem (.jsonl + .pcap); empty disables")
@@ -72,18 +74,21 @@ func main() {
 		log.Fatalf("ip: need IPv4 address, got %q", *ipStr)
 	}
 
-	// Pick what runs on top of TCP. There are two plug-in styles:
+	// Pick what runs on top of TCP. There are three plug-in styles:
 	//   - app (tcp.App) gets each chunk of received bytes as a callback
-	//     and returns bytes to send. Echo and plain HTTP work this way.
-	//   - acceptor (tcp.Acceptor) gets a whole connection as a net.Conn.
-	//     TLS needs that, because it reads and writes on its own schedule.
-	//     The HTTPS apps then set app to a no-op.
+	//     and returns bytes to send. Echo works this way.
+	//   - listener (net.Listener from tcp.NewListener): Accept returns a
+	//     net.Conn per connection. Plain HTTP and Go's net/http use this.
+	//   - acceptor (tcp.Acceptor) gets a whole connection as a net.Conn
+	//     immediately. TLS needs that; the HTTPS apps then set app to a no-op.
 	// Each app also has a well-known default port.
 	var (
-		app      tcp.App
-		acceptor tcp.Acceptor
-		port     = uint16(*tcpPort)
-		appDesc  string
+		app        tcp.App
+		acceptor   tcp.Acceptor
+		httpSrv    *http1.Server // set for -app http / http-go; started after the stack
+		useStdHTTP bool
+		port       = uint16(*tcpPort)
+		appDesc    string
 	)
 	switch *appName {
 	case "echo":
@@ -93,11 +98,23 @@ func main() {
 		}
 		appDesc = "TCP echo"
 	case "http":
-		app = http1.New(log.Default())
+		// Hand-rolled HTTP on a net.Listener. ListenTCP stays 0 here; the
+		// Listener opens the port after the stack is built.
+		httpSrv = http1.New(log.Default())
+		app = tcp.NopApp{}
 		if port == 0 {
 			port = 80
 		}
-		appDesc = "HTTP/1"
+		appDesc = "HTTP/1 (our server on net.Listener)"
+	case "http-go":
+		// Same Listener, but net/http.Server.Serve drives it.
+		httpSrv = http1.New(log.Default())
+		useStdHTTP = true
+		app = tcp.NopApp{}
+		if port == 0 {
+			port = 80
+		}
+		appDesc = "HTTP/1 (net/http.Server on net.Listener)"
 	case "https":
 		hs, err := https1.New(ip.To4(), log.Default())
 		if err != nil {
@@ -121,7 +138,7 @@ func main() {
 		}
 		appDesc = "HTTPS (mintls TLS 1.2 DIY + HTTP/1)"
 	default:
-		log.Fatalf("unknown -app %q (want http|https|https-diy|echo)", *appName)
+		log.Fatalf("unknown -app %q (want http|http-go|https|https-diy|echo)", *appName)
 	}
 
 	// Open the TAP. From here on, every Read is one Ethernet frame the
@@ -160,7 +177,7 @@ func main() {
 		log.Printf("protocols: ARP, ICMP echo, %s :%d", appDesc, port)
 	}
 	switch *appName {
-	case "http":
+	case "http", "http-go":
 		log.Printf("from another shell: curl http://%s/   or   printf 'GET / HTTP/1.0\\r\\n\\r\\n' | nc %s %d",
 			ip.To4(), ip.To4(), port)
 	case "https", "https-diy":
@@ -171,10 +188,16 @@ func main() {
 		log.Printf("from another shell: ping %s   or   nc %s %d", ip.To4(), ip.To4(), port)
 	}
 
+	// Plain HTTP opens its own Listener after New, so leave ListenTCP at 0
+	// for those apps. Echo and HTTPS still register the port here.
+	listenPort := port
+	if httpSrv != nil {
+		listenPort = 0
+	}
 	st := stack.New(dev, stack.Config{
 		MAC:       mac,
 		IP:        ip.To4(),
-		ListenTCP: port,
+		ListenTCP: listenPort,
 		App:       app,
 		Acceptor:  acceptor,
 		Dump:      *doDump,
@@ -183,6 +206,28 @@ func main() {
 		Logger:    log.Default(),
 	})
 
+	// Same Listener, two servers: ours, or Go's. Either way curl sees HTTP.
+	if httpSrv != nil {
+		ln := st.TCP().NewListener(port)
+		if useStdHTTP {
+			srv := &http.Server{
+				Handler:           httpSrv.Handler(),
+				ReadHeaderTimeout: 0,
+			}
+			srv.SetKeepAlivesEnabled(false)
+			go func() {
+				if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed && err != net.ErrClosed {
+					log.Printf("http-go: %v", err)
+				}
+			}()
+		} else {
+			go func() {
+				if err := httpSrv.Serve(ln); err != nil && err != net.ErrClosed {
+					log.Printf("http: %v", err)
+				}
+			}()
+		}
+	}
 	// Ctrl-C (SIGINT) or SIGTERM ends the program cleanly so the deferred
 	// Close calls run and the capture files are complete.
 	stop := make(chan os.Signal, 1)

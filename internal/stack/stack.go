@@ -93,6 +93,10 @@ func New(nif NetIF, cfg Config) *Stack {
 	return s
 }
 
+// TCP returns the userspace TCP layer. Callers that want a net.Listener
+// (hand-rolled HTTP, net/http.Server, …) use TCP().NewListener(port).
+func (s *Stack) TCP() *tcp.Stack { return s.tcp }
+
 // SendTCP implements tcp.Emitter. It serializes seg (the TCP checksum needs
 // both IP addresses, which is why they are passed in) and sends it as an
 // IPv4 packet with protocol number 6.

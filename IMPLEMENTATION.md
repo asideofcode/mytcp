@@ -213,25 +213,37 @@ traffic is trusted; a bit-flip would be processed incorrectly.
 
 | Feature | Status | Notes |
 |---------|--------|--------|
-| `tcp.App` callback (`OnData` / `OnClose`) | **yes** | Replaces hard-coded echo |
+| `net.Conn` (`StreamConn`) | **yes** | Blocking Read/Write; used by TLS and HTTP |
+| `net.Listener` (`tcp.Listener`) | **yes** | `NewListener(port)` → `Accept` |
+| `tcp.App` callback (`OnData` / `OnClose`) | **yes** | Echo; HTTPS still feeds http1 via OnData |
 | Echo app (`-app echo`) | **yes** | Port 7 by default |
-| HTTP/1 GET+HEAD (`-app http`) | **yes** | Port 80; buffer to `\r\n\r\n`; `Connection: close` |
+| HTTP/1 GET+HEAD (`-app http`) | **yes** | Our server on `net.Listener`; `Connection: close` |
+| HTTP via stdlib (`-app http-go`) | **yes** | Same Listener; `net/http.Server.Serve` |
 | HTTPS (`-app https`) | **yes** | Port 443; Go `crypto/tls` over `tcp.StreamConn` + same HTTP/1; self-signed (`curl -k`) |
 | HTTPS DIY (`-app https-diy`) | **yes** | Port 443; our `mintls` TLS 1.2 (`ECDHE_ECDSA_AES_128_GCM_SHA256`) + HTTP/1; `curl -k --tlsv1.2 --tls-max 1.2` |
 | HTTP request body / POST | **no** | Headers only |
 | HTTP/1.1 keep-alive, chunked, routing | **no** | One shot then FIN |
 | TLS 1.3 / other cipher suites | **no** | mintls is intentionally one suite |
+| Read/write deadlines on StreamConn | **no** | `Set*Deadline` are no-ops |
 
-**`tcp.App` callback** — TCP is a byte pipe. When in-order data arrives,
-`OnData` may return bytes to send and whether to FIN afterward. **Enables**
-swapping echo for HTTP without changing L2–L4.
+**`net.Listener` / `net.Conn`** — ESTABLISHED connections are exposed the
+same way a kernel socket is. Hand-rolled HTTP and Go’s `net/http.Server`
+both call `Accept` / `Read` / `Write` on our userspace TCP.
+
+**`tcp.App` callback** — Still used by echo (and by HTTPS after decrypt).
+When a Listener or Acceptor is set, the data path goes through StreamConn
+instead.
 
 **Echo app** — Same as Stage 4: payload mirrored. Example: `nc 10.0.0.2 7`.
 
-**HTTP/1 GET+HEAD** — Accumulate stream until `\r\n\r\n`, parse request
-line, send a fixed HTML (or HEAD) response, then active-close (FIN).
-**Enables** `curl http://10.0.0.2/`. Not a general web server: no body
-parser, no paths beyond logging, no keep-alive.
+**HTTP/1 GET+HEAD (`-app http`)** — `http1.Server.Serve(ln)`: Accept loop,
+buffer until `\r\n\r\n`, fixed HTML (or HEAD) response, then close.
+**Enables** `curl http://10.0.0.2/`.
+
+**HTTP via stdlib (`-app http-go`)** — Same `tcp.Listener`, but
+`http.Server{Handler: …}.Serve(ln)`. curl cannot tell it apart from
+`-app http`. **Enables** proving the Go socket interface is complete enough
+for real stdlib code.
 
 **HTTP request body / POST** — Ignored / 405. Content-Length bodies are
 not consumed.

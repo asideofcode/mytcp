@@ -890,23 +890,80 @@ sequenceDiagram
       </section>
       <!-- /hexdump:tcp -->
 
-      <section>
-        <h2>How an app plugs into our TCP</h2>
-        <p class="code-path">internal/tcp/app.go</p>
-        <pre><code class="language-go" data-trim data-line-numbers="1-8|10-13">// what our TCP calls when a connection has news
-// (ConnKey = their IP, their port, our port)
-type App interface {
-    // bytes arrived: return bytes to send back, and whether to close
-    OnData(key ConnKey, data []byte) (reply []byte, closeAfter bool)
-    // the connection has ended
-    OnClose(key ConnKey)
+      <section id="tcp-stream">
+        <h2>TCP is a stream. Segment edges mean nothing upstairs.</h2>
+        <table class="compact">
+          <thead><tr><th></th><th>What it needs from TCP</th><th>Why</th></tr></thead>
+          <tbody>
+            <tr class="fragment"><td><strong>HTTP</strong></td><td>Bytes, until it finds <code>\r\n\r\n</code></td><td>Framing is in the text. A push of chunks is enough.</td></tr>
+            <tr class="fragment"><td><strong>TLS</strong></td><td>Blocking <code>Read</code> / <code>Write</code></td><td>The handshake waits for whole records, on its own schedule.</td></tr>
+          </tbody>
+        </table>
+        <p class="fragment soft">Give the app a <code>net.Conn</code> and a <code>Listener</code>, and both fit: HTTP reads until the blank line, TLS drives the handshake itself. Our server, Go’s <code>net/http</code>, and TLS all plug in the same way.</p>
+        <aside class="notes">
+          One request may arrive in three segments; three requests may share one. The app decides where messages start and end.
+          That is why the socket interface matters: crypto/tls and mintls need net.Conn, and once you have that, Listener + Serve is how HTTP sits on top too.
+        </aside>
+      </section>
+
+      <section id="tcp-types">
+        <h2>From segments to sockets: four types</h2>
+        <p class="code-path">internal/tcp</p>
+        <pre><code class="language-plaintext" data-trim data-line-numbers="1-2|3-6|7-9|10-12">Segment     one packet: ports, seq, ack, flags, payload       segment.go
+   │  Stack.Handle looks up its connection by (their IP, their port, our port)
+   ▼
+Conn        one connection's TCP state, inside the stack      stack.go
+            state SYN_RECEIVED → ESTABLISHED, next seq / ack,
+            sent-but-unacked segments to resend
+   │  reaches ESTABLISHED: wrapped once
+   ▼
+StreamConn  the app's view of that Conn: Read, Write, Close   stream.go
+   │  handed out by
+   ▼
+Listener    one per port: Accept returns the next StreamConn  listener.go</code></pre>
+        <p class="fragment soft">Segments carry bytes; <code>Conn</code> puts them in order; <code>StreamConn</code> lets an app read them; <code>Listener</code> is how the app gets one. Going out, it runs the other way: <code>Write</code> → <code>Conn</code> → new <code>Segment</code>s.</p>
+      </section>
+
+      <section id="struct-stream" class="code-tight">
+        <h2>A TCP connection, as a Go <code>net.Conn</code></h2>
+        <p class="code-path">internal/tcp/stream.go</p>
+        <pre><code class="language-go" data-trim data-line-numbers="1-5|7-11|13-15">type StreamConn struct {
+    tuple   fourTuple // which Conn in the stack this is the view of
+    rbuf    []byte    // payloads from in-order Segments, not yet Read
+    rClosed bool      // a FIN Segment arrived: Read → EOF once rbuf is empty
 }
 
-// the simplest app: send back whatever arrives, stay open
-func (EchoApp) OnData(_ ConnKey, data []byte) ([]byte, bool) {
-    return append([]byte(nil), data...), false
+func (c *StreamConn) Read(p []byte) (int, error) {
+    for len(c.rbuf) == 0 &amp;&amp; !c.rClosed {
+        c.cond.Wait() // block until the stack delivers more
+    }
+    // … copy out of rbuf
+}
+
+func (c *StreamConn) Write(p []byte) (int, error) { /* → segments */ }
+func (c *StreamConn) Close() error                 { /* → FIN */ }</code></pre>
+        <p class="fragment soft">In: each in-order <code>Segment</code>’s payload is appended to <code>rbuf</code> and <code>Read</code> wakes. Out: <code>Write</code> asks the <code>Conn</code> for PSH+ACK <code>Segment</code>s. The app never sees a segment.</p>
+      </section>
+
+      <section id="struct-listener" class="code-tight">
+        <h2>A listen port, as a Go <code>net.Listener</code></h2>
+        <p class="code-path">internal/tcp/listener.go</p>
+        <pre><code class="language-go" data-trim data-line-numbers="1-4|6-8|10-14">type Listener struct {
+    ch   chan *StreamConn // ESTABLISHED conns waiting for Accept
+    done chan struct{}
+}
+
+func (s *Stack) NewListener(port uint16) *Listener { /* Listen + wire Accept */ }
+
+// a Conn just reached ESTABLISHED: the stack pushes, the app pulls
+func (l *Listener) OnAccept(c *StreamConn) { l.ch &lt;- c }
+func (l *Listener) Accept() (net.Conn, error) {
+    select {
+    case c := &lt;-l.ch: return c, nil
+    case &lt;-l.done:   return nil, net.ErrClosed
+    }
 }</code></pre>
-        <p class="fragment soft">The app gets bytes, returns bytes, and says whether to close. Echo is the smallest one. HTTP will be the first real protocol on top.</p>
+        <p class="fragment soft">Compile-time checks: both types satisfy Go’s socket interfaces. HTTPS and <code>http.Server.Serve(ln)</code> need no special casing.</p>
       </section>
 
 
@@ -946,7 +1003,7 @@ peer Nitro   ── reorder → hand TCP bytes up</code></pre>
       <section data-auto-animate>
         <h2 data-id="btitle">Next: the application</h2>
         <div class="layer-board" data-id="board">
-          <div class="layer filled" data-id="app"><span class="lbl">APPLICATION</span><span class="val">HTTP/1: GET and HEAD</span></div>
+          <div class="layer filled" data-id="app"><span class="lbl">APPLICATION</span><span class="val">HTTP/1 on net.Listener</span></div>
           <div class="layer empty optional" data-id="sec"><span class="lbl">SECURITY <em>optional</em></span><span class="val">( )</span></div>
           <div class="layer-row"><div class="layer filled" data-id="ctl"><span class="lbl">CONTROL</span><span class="val">ICMP</span></div><div class="layer filled" data-id="trn"><span class="lbl">TRANSPORT</span><span class="val">TCP</span></div></div>
           <div class="layer filled" data-id="net"><span class="lbl">NETWORK</span><span class="val">IPv4</span></div>
@@ -957,21 +1014,32 @@ peer Nitro   ── reorder → hand TCP bytes up</code></pre>
       </section>
 
       <section id="http-parse">
-        <h2>HTTP: finding where a request ends</h2>
-        <p class="code-path">internal/http1/server.go</p>
-        <pre><code class="language-go" data-trim data-line-numbers="1-2|3-7|8-10|11-12">// TCP may split one request across segments: keep appending
-buf := append(s.buf[key], data...)
-// the headers end at the first blank line
-headerEnd := bytes.Index(buf, []byte("\r\n\r\n"))
-if headerEnd &lt; 0 {
-    return nil, false // not all here yet: wait for more
+        <h2>Our own HTTP server on that Listener</h2>
+        <p class="code-path">internal/http1/server.go · <code>-app http</code></p>
+        <pre><code class="language-go" data-trim data-line-numbers="1-5|7-11">func (s *Server) Serve(ln net.Listener) error {
+    for {
+        c, err := ln.Accept()
+        if err != nil { return err }
+        go s.ServeConn(c) // one goroutine per connection
+    }
 }
-// the first line looks like "GET /index.html HTTP/1.1"
-line, _, _ := strings.Cut(string(buf[:headerEnd]), "\r\n")
-method, path := /* Fields(line) */
-// send the page; true = close the connection afterwards
-return s.response(200, "text/html; charset=utf-8", body), true</code></pre>
-        <p class="rabbit fragment"><span>Rabbit holes</span> keep-alive → HTTP/2 multiplexing → HTTP/3 on QUIC · caching · REST and gRPC</p>
+
+func (s *Server) ServeConn(c net.Conn) {
+    // read until \r\n\r\n, write the response, close
+}</code></pre>
+        <p class="fragment soft">Same accept loop you would write on a kernel socket. TCP underneath is ours; the HTTP code never hears about segments.</p>
+      </section>
+
+      <section id="http-go">
+        <h2>Or just hand the Listener to Go</h2>
+        <p class="code-path">cmd/mytcp/main.go · <code>-app http-go</code></p>
+        <pre><code class="language-go" data-trim data-line-numbers="1-2|4-8">ln := stack.TCP().NewListener(80)
+
+// Go’s own HTTP server, unchanged
+srv := &amp;http.Server{Handler: page}
+srv.SetKeepAlivesEnabled(false)
+srv.Serve(ln) // Accept → Read → Write, all through our TCP</code></pre>
+        <p class="fragment soft">curl cannot tell the two apps apart. The proof that the interface is right is that the stdlib works on it.</p>
       </section>
 
       <!-- hexdump:http -->
@@ -1044,7 +1112,7 @@ return s.response(200, "text/html; charset=utf-8", body), true</code></pre>
       <section data-auto-animate>
         <h2 data-id="btitle">Optional: the security layer</h2>
         <div class="layer-board" data-id="board">
-          <div class="layer filled" data-id="app"><span class="lbl">APPLICATION</span><span class="val">HTTP/1: GET and HEAD</span></div>
+          <div class="layer filled" data-id="app"><span class="lbl">APPLICATION</span><span class="val">HTTP/1 on net.Listener</span></div>
           <div class="layer filled optional" data-id="sec"><span class="lbl">SECURITY</span><span class="val">TLS 1.2: Go’s library or our own</span></div>
           <div class="layer-row"><div class="layer filled" data-id="ctl"><span class="lbl">CONTROL</span><span class="val">ICMP</span></div><div class="layer filled" data-id="trn"><span class="lbl">TRANSPORT</span><span class="val">TCP</span></div></div>
           <div class="layer filled" data-id="net"><span class="lbl">NETWORK</span><span class="val">IPv4</span></div>
@@ -1056,11 +1124,12 @@ return s.response(200, "text/html; charset=utf-8", body), true</code></pre>
 
       <section>
         <h2>HTTPS is HTTP plus one optional layer</h2>
-        <pre class="diagram-code"><code class="nohighlight">HTTP  ─┬─ straight on TCP     (-app http)
-       └─ inside TLS on TCP   (-app https or -app https-diy)
+        <pre class="diagram-code"><code class="nohighlight">HTTP  ─┬─ our server on net.Listener     (-app http)
+       ├─ net/http.Server on same Listener (-app http-go)
+       └─ inside TLS on TCP              (-app https or -app https-diy)
                  ↑
          the same TCP code underneath</code></pre>
-        <p class="fragment soft">We added HTTPS late in the project, and nothing below TCP had to change.</p>
+        <p class="fragment soft">We added HTTPS late in the project, and nothing below TCP had to change. Same for swapping in Go’s HTTP server.</p>
       </section>
 
       <section>
@@ -1290,7 +1359,7 @@ record payload = explicitNonce(8) || ciphertext || tag(16)</code></pre>
             <tr class="fragment"><td>Reading raw frames from TAP</td><td><code>-dump-only</code> prints every frame</td></tr>
             <tr class="fragment"><td>ARP and IPv4 + ICMP</td><td><code>ping 10.0.0.2</code></td></tr>
             <tr class="fragment"><td>TCP handshake, data, resends</td><td><code>nc</code> to an echo app</td></tr>
-            <tr class="fragment"><td>HTTP</td><td><code>curl http://10.0.0.2/</code></td></tr>
+            <tr class="fragment"><td>HTTP (ours, or Go’s <code>net/http</code>)</td><td><code>curl http://10.0.0.2/</code></td></tr>
             <tr class="fragment"><td>TLS</td><td><code>curl -k https://10.0.0.2/</code></td></tr>
           </tbody>
         </table>
@@ -1325,6 +1394,7 @@ make lab-up &amp;&amp; make lab-build
 
 # shell A: run our stack on tap0 serving HTTP, and save a packet capture
 /tmp/mytcp -i tap0 -app http -dump=false -pcap captures/latest
+# same Listener, Go’s server instead:  -app http-go
 
 # shell B: talk to it with ordinary tools
 ping -c 3 10.0.0.2       # exercises ARP + ICMP

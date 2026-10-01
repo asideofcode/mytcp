@@ -849,3 +849,9 @@ html.reveal-full-page,
 .reveal pre.hexdump.stack3 + .hexlabel {
   margin-top: 0.15em;
 }
+
+/* code slides that carry a struct plus its methods */
+.reveal .slides section.code-tight pre {
+  font-size: 0.52em;
+  margin-bottom: 0.4em;
+}

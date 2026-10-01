@@ -99,8 +99,9 @@ you **slot technology in — or leave it out**.
 In this repo that shows up concretely:
 
 ```text
-HTTP  ──┬── plain on TCP     (-app http)
-        └── TLS, then HTTP   (-app https | https-diy)
+HTTP  ──┬── our server on net.Listener      (-app http)
+        ├── net/http.Server on same Listener (-app http-go)
+        └── TLS, then HTTP                   (-app https | https-diy)
                ↑
           same TCP / StreamConn below
 ```
@@ -181,7 +182,8 @@ A few things sit beside the peel-and-wrap habit:
 
 - **TAP device** — `Read`/`Write` of frames. That is the wire handle,
   not a protocol header.
-- **`tcp.App` / `Acceptor` / `StreamConn`** — application and stream
+- **`tcp.Listener` / `StreamConn`** — `net.Listener` / `net.Conn` over userspace TCP
+- **`tcp.App` / `Acceptor`** — callback echo path; push accept for TLS
   adapters *above* segments. They consume the onion’s top payload as a
   byte stream.
 - **`stack` demux** — glue that calls `eth.Parse`, switches on type,

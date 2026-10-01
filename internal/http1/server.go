@@ -3,17 +3,22 @@
 // Mental model: TCP delivers a byte stream; HTTP is just parsing that stream
 // for a request ending in \r\n\r\n, then writing a response and closing.
 //
-// It plugs into the stack as a tcp.App: TCP hands it in-order payload bytes
-// per connection, and it hands back response bytes plus "close after this".
-// It deliberately leaves out keep-alive, request bodies, chunked encoding,
-// header parsing beyond the request line, and routing: every path gets the
-// same page.
+// The preferred way in is Serve / ServeConn on a net.Listener / net.Conn —
+// the same interface a kernel socket exposes. OnData / OnClose remain so
+// the HTTPS wrappers can feed decrypted bytes through the same request
+// logic. It deliberately leaves out keep-alive, request bodies, chunked
+// encoding, header parsing beyond the request line, and routing: every
+// path gets the same page.
 package http1
 
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"log"
+	"net"
+	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -25,11 +30,13 @@ import (
 // \r\n\r\n could make us buffer forever.
 const maxBuf = 64 << 10
 
-// Server implements tcp.App. It keeps one partial-request buffer per
-// connection, because a request may arrive spread over several TCP segments.
+// Server serves the same tiny page either through Serve / ServeConn on a
+// net.Listener, or through OnData / OnClose when driven by the HTTPS
+// wrappers. It keeps one partial-request buffer per connection, because a
+// request may arrive spread over several TCP segments.
 //
-// The same Server is also driven by the HTTPS wrappers from one goroutine
-// per connection, so mu guards buf.
+// The HTTPS path drives OnData from one goroutine per connection, so mu
+// guards buf.
 type Server struct {
 	mu   sync.Mutex
 	buf  map[tcp.ConnKey][]byte // bytes received so far, per connection, until headers are complete
@@ -47,6 +54,83 @@ func New(logger *log.Logger) *Server {
 		buf: make(map[tcp.ConnKey][]byte),
 		log: logger,
 	}
+}
+
+// Serve accepts connections on ln and handles each in its own goroutine.
+// It returns when ln.Accept fails (for example after ln.Close).
+func (s *Server) Serve(ln net.Listener) error {
+	for {
+		c, err := ln.Accept()
+		if err != nil {
+			return err
+		}
+		go s.ServeConn(c)
+	}
+}
+
+// ServeConn reads one HTTP request from c, writes the response, and closes.
+// It is what Go's net/http does per connection, only smaller.
+func (s *Server) ServeConn(c net.Conn) {
+	defer c.Close()
+	key := connKey(c)
+	buf := make([]byte, 4096)
+	for {
+		n, err := c.Read(buf)
+		if n > 0 {
+			reply, done := s.OnData(key, buf[:n])
+			if len(reply) > 0 {
+				if _, werr := c.Write(reply); werr != nil {
+					s.OnClose(key)
+					return
+				}
+			}
+			if done {
+				return
+			}
+		}
+		if err != nil {
+			if err != io.EOF {
+				s.log.Printf("http: %v read: %v", key, err)
+			}
+			s.OnClose(key)
+			return
+		}
+	}
+}
+
+// Handler returns an http.Handler that serves the same page as this
+// Server. Pass it to net/http.Server to prove the stdlib works on our
+// Listener unchanged.
+func (s *Server) Handler() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet, http.MethodHead:
+			body := s.body()
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.Header().Set("Content-Length", strconv.Itoa(len(body)))
+			w.Header().Set("Connection", "close")
+			w.WriteHeader(http.StatusOK)
+			if r.Method == http.MethodGet {
+				_, _ = io.WriteString(w, body)
+			}
+			s.log.Printf("http-go: %s %s %s", r.RemoteAddr, r.Method, r.URL.Path)
+		default:
+			http.Error(w, "method not allowed\n", http.StatusMethodNotAllowed)
+		}
+	})
+}
+
+// connKey builds the ConnKey OnData uses from a net.Conn's addresses.
+func connKey(c net.Conn) tcp.ConnKey {
+	key := tcp.ConnKey{}
+	if a, ok := c.RemoteAddr().(*net.TCPAddr); ok {
+		key.RemoteIP = a.IP.String()
+		key.RemotePort = uint16(a.Port)
+	}
+	if a, ok := c.LocalAddr().(*net.TCPAddr); ok {
+		key.LocalPort = uint16(a.Port)
+	}
+	return key
 }
 
 // OnData is called with each chunk of in-order bytes TCP receives on the

@@ -47,11 +47,12 @@ make lab-build                # from the Mac, or: go build -o /tmp/mytcp ./cmd/m
 # or from the Mac:  make lab-run
 ```
 
-You should see `HTTP/1 :80`. Then in another shell:
+You should see `HTTP/1 (our server on net.Listener) :80`. Then in another shell:
 
 ```bash
 make shell
 curl http://10.0.0.2/
+# http-go:  /tmp/mytcp -i tap0 -app http-go -dump=false   # Go’s net/http.Server
 # https:    /tmp/mytcp -i tap0 -app https -dump=false
 #           curl -k https://10.0.0.2/
 # https-diy:/tmp/mytcp -i tap0 -app https-diy -dump=false
@@ -104,8 +105,8 @@ go build -o /tmp/mytcp ./cmd/mytcp
 | `-ip` | `10.0.0.2` | Address we claim |
 | `-host` | `10.0.0.1/24` | Kernel-side addr on TAP (`""` skips) |
 | `-mac` | `02:00:00:00:00:02` | MAC we claim |
-| `-tcp` | `0` → 80/7 | Listen port (`http`→80, `echo`→7) |
-| `-app` | `http` | `http`, `https`, `https-diy`, or `echo` |
+| `-tcp` | `0` → 80/443/7 | Listen port (`http`/`http-go`→80, `https*`→443, `echo`→7) |
+| `-app` | `http` | `http`, `http-go`, `https`, `https-diy`, or `echo` |
 | `-dump` | `true` | Layered onion decode + hex per header |
 | `-dump-only` | `false` | No protocol replies |
 | `-pcap` | `captures/latest` | Capture stem (`.jsonl` + `.pcap`); `""` off |
@@ -119,8 +120,8 @@ internal/eth/       Ethernet II
 internal/arp/       ARP request/reply
 internal/ip4/       IPv4 + checksum
 internal/icmp/      Echo request/reply
-internal/tcp/       Segments + conn state + app/stream + retransmit
-internal/http1/     Tiny HTTP/1 server (tcp.App)
+internal/tcp/       Segments + conn state + net.Listener/Conn + retransmit
+internal/http1/     Tiny HTTP/1 server (Serve on Listener; also Handler for net/http)
 internal/https1/    HTTPS: crypto/tls or mintls + http1
 internal/mintls/    Minimal TLS 1.2 server (one cipher suite)
 internal/stack/     Demux L2→L4
