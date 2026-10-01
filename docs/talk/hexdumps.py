@@ -24,10 +24,13 @@ FRAMES = {
     "arp-req": "ffffffffffffeeeaf30f573208060001080006040001eeeaf30f57320a0000010000000000000a000002",
     "arp-rep": "eeeaf30f5732020000000002080600010800060400020200000000020a000002eeeaf30f57320a000001",
     "ping": "020000000002eeeaf30f5732080045000054c6d3400040015fd30a0000010a000002080040fe000700018039bc6a00000000b982020000000000101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f3031323334353637",
+    "ping-reply": "eeeaf30f573202000000000208004500005400010000400166a60a0000020a000001000048fe000700018039bc6a00000000b982020000000000101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f3031323334353637",
     "syn": "020000000002eeeaf30f573208004500003c56ea40004006cfcf0a0000010a000002c68a005013e85a6600000000a002faf02f000000020405b40402080aa1a8333b0000000001030307",
     "synack": "eeeaf30f573202000000000208004500002800020000400666cc0a0000020a0000010050c68a000003e813e85a675012ffff62be0000",
     "ack": "020000000002eeeaf30f573208004500002856eb40004006cfe20a0000010a000002c68a005013e85a67000003e95010faf067ce0000",
     "http-get": "020000000002eeeaf30f573208004500007056ec40004006cf990a0000010a000002c68a005013e85a67000003e95018faf091b10000474554202f20485454502f312e310d0a486f73743a2031302e302e302e320d0a557365722d4167656e743a206375726c2f372e38382e310d0a4163636570743a202a2f2a0d0a0d0a",
+    # the reply to http-get; dumped only up to the end of the headers
+    "http-200": "eeeaf30f573202000000000208004500011100030000400665e20a0000020a0000010050c68a000003e913e85aaf5018ffff5cf60000485454502f312e3020323030204f4b0d0a436f6e74656e742d547970653a20746578742f68746d6c3b20636861727365743d7574662d380d0a436f6e74656e742d4c656e6774683a203133340d0a436f6e6e656374696f6e3a20636c6f73650d0a0d0a3c21646f63747970652068746d6c3e0a3c68746d6c3e3c686561643e3c7469746c653e6d797463703c2f7469746c653e3c2f686561643e0a3c626f64793e0a3c68313e6d797463703c2f68313e0a3c703e485454502f31206f7665722075736572737061636520544350206f6e205441502e3c2f703e0a3c2f626f64793e3c2f68746d6c3e0a",
     "tls-get": "020000000002aa0baa94e9f308004500008d13f34000400612760a0000010a000002ce9e01bb6f3a1b39000006545018f95ac9130000170303006091a20ad98a04d79f3810fffeb5c37707da7769853ca0878e2c7ce85456b3a1800bb3b9990898a44841014f6ed81ed1929b37442d7af68a886645c208886b41604027021aa37352918a843c50cd887e9aad265f2a1ce5abd38a80393471bf80c9",
     # curl -4 http://google.com/ in Docker; tcpdump on eth0 (see docs/talk/README.md)
     "google-http-syn": "0242f2e39b630242ac11000408004500003c5e7d4000400682bdac1100048efb1e71e4d40050737d389500000000a002ffd759b000000204ffd70402080a16a03fcb0000000001030307",
@@ -50,7 +53,28 @@ def shade(fields):
     return out
 
 
-def dump(data: bytes, spans, skip=0, cls="hexdump") -> str:
+def layer_of(colour):
+    return colour.rstrip("0123456789")
+
+
+def step_attrs(colour, steps, row=False):
+    """steps: {layer: (fragment index, "wrap" or "peel")}. A wrap layer starts grey
+    and takes its colour on that key press; a peel layer goes grey instead.
+    Returns (extra classes, extra attributes)."""
+    step = steps and colour and steps.get(layer_of(colour))
+    if not step:
+        return "", ""
+    index, kind = step
+    if row:
+        kind = "dim-in" if kind == "wrap" else "semi-fade-out"
+    return f" fragment {kind}", f' data-fragment-index="{index}"'
+
+
+def frag(step):
+    return "" if step is None else f' data-fragment-index="{step}"'
+
+
+def dump(data: bytes, spans, skip=0, cls="hexdump", steps=None, step=None) -> str:
     """hexdump -C [-s skip], with each field's bytes wrapped in one coloured span."""
     colour, field = [None] * len(data), [None] * len(data)
     for n, (start, end, c) in enumerate(spans):
@@ -68,8 +92,12 @@ def dump(data: bytes, spans, skip=0, cls="hexdump") -> str:
                 out.append([i, cell(i), s])
             prev = field[i]
         return "".join(
-            s + (f'<span class="{colour[i]}">{t}</span>' if colour[i] else t) for i, t, s in out
+            s + (span_open(colour[i]) + f"{t}</span>" if colour[i] else t) for i, t, s in out
         )
+
+    def span_open(c):
+        extra, attrs = step_attrs(c, steps)
+        return f'<span class="{c}{extra}"{attrs}>'
 
     lines = []
     for off in range(skip, len(data), 16):
@@ -84,7 +112,9 @@ def dump(data: bytes, spans, skip=0, cls="hexdump") -> str:
         )
         lines.append(f"{off:08x}  {hex_part}{' ' * (48 - width)}  |{ascii_part}|")
     lines.append(f"{len(data):08x}")
-    return f'<pre class="{cls}"><code class="nohighlight" data-noescape>' + "\n".join(lines) + "</code></pre>"
+    if step is not None:
+        cls += " fragment"
+    return f'<pre class="{cls}"{frag(step)}><code class="nohighlight" data-noescape>' + "\n".join(lines) + "</code></pre>"
 
 
 def chip(c):
@@ -99,26 +129,36 @@ def spans(fields):
     return [(f[0], f[1], f[2]) for f in fields]
 
 
-def table(head, fields):
-    """fields: (start, end, colour, name, value...) — one row per field."""
-    th = "".join(f"<th>{h}</th>" for h in ["", "Bytes"] + head)
+def table(head, fields, steps=None, col_step=None):
+    """fields: (start, end, colour, name, value...) — one row per field.
+    col_step: (column, fragment index) to step in one column, e.g. a reply."""
+    cols = ["", "Bytes"] + head
+    td = lambda k, x, tag="td": (f'<{tag} class="fragment"{frag(col_step[1])}>{x}</{tag}>'
+                                 if col_step and k == col_step[0] else f"<{tag}>{x}</{tag}>")
+    th = "".join(td(k, h, "th") for k, h in enumerate(cols))
     rows = []
     for start, end, c, *cells in fields:
-        tds = "".join(f"<td>{x}</td>" for x in [chip(c), span_range(start, end)] + cells)
-        rows.append(f"            <tr>{tds}</tr>")
+        tds = "".join(td(k, x) for k, x in enumerate([chip(c), span_range(start, end)] + cells))
+        extra, attrs = step_attrs(c, steps, row=True)
+        cls = f' class="{extra.strip()}"' if extra else ""
+        rows.append(f"            <tr{cls}{attrs}>{tds}</tr>")
+    width = "fields2" if len(head) == 3 else "fields"
     return (
-        '        <table class="compact hexlegend">\n'
+        f'        <table class="compact hexlegend {width}">\n'
         f"          <thead><tr>{th}</tr></thead>\n"
         "          <tbody>\n" + "\n".join(rows) + "\n          </tbody>\n        </table>"
     )
 
 
-def note(text):
-    return f'        <p class="soft hexnote">{text}</p>'
+def note(text, step=None):
+    if step is None:
+        return f'        <p class="soft hexnote">{text}</p>'
+    return f'        <p class="soft hexnote fragment" data-fragment-index="{step}">{text}</p>'
 
 
-def label(text):
-    return f'        <p class="hexlabel">{text}</p>'
+def label(text, step=None):
+    cls = "hexlabel fragment" if step is not None else "hexlabel"
+    return f'        <p class="{cls}"{frag(step)}>{text}</p>'
 
 
 def b(name):
@@ -186,18 +226,20 @@ IPV4 = shade([
     (24, 26, "ip", "Header checksum", "5f d3: covers these 20 bytes only"),
     (26, 30, "ip", f"Source IP ({C('Src')})", "0a 00 00 01 = 10.0.0.1"),
     (30, 34, "ip", f"Destination IP ({C('Dst')})", "0a 00 00 02 = 10.0.0.2"),
-    (34, 98, "f0", J("ICMP message", "hex-icmp"), "echo request — next slide"),
+    (34, 98, "f0", J("ICMP message", "hex-icmp"), "an echo request, unpacked in the ICMP section"),
 ])
 
 ICMP = shade([
-    (0, 34, "f0", J("Ethernet + IPv4 headers", "hex-ipv4"), "as on the previous slide · proto 01 = ICMP"),
-    (34, 35, "icmp", f"Type ({C('Type')})", "08 = echo request (a reply is 00)"),
-    (35, 36, "icmp", "Code", "00: echo has no sub-types"),
-    (36, 38, "icmp", "Checksum", "40 fe: covers the whole ICMP message"),
-    (38, 40, "icmp", f"Identifier ({C('ID')})", "00 07: which ping process sent it"),
-    (40, 42, "icmp", f"Sequence number ({C('Seq')})", "00 01 = the first ping"),
-    (42, 58, "icmp", "Data: send time", "80 39 bc 6a … read <strong>little-endian</strong> = 1790720384 s + 164537 µs = 22:19:44.164537 UTC"),
-    (58, 98, "icmp", "Data: filler", "10 11 12 … 37: a counting pattern up to 56 bytes of data"),
+    (0, 34, "f0", J("Ethernet + IPv4 headers", "hex-ipv4"),
+     "10.0.0.1 → 10.0.0.2 · proto 01 = ICMP",
+     "10.0.0.2 → 10.0.0.1: addresses swapped"),
+    (34, 35, "icmp", f"Type ({C('Type')})", "08 = echo request", "<strong>00 = echo reply</strong> ← the change that matters"),
+    (35, 36, "icmp", "Code", "00: echo has no sub-types", "same"),
+    (36, 38, "icmp", "Checksum", "40 fe: covers the whole ICMP message", "48 fe: redone, because the type changed"),
+    (38, 40, "icmp", f"Identifier ({C('ID')})", "00 07: which ping process sent it", "same, so ping knows the reply is its own"),
+    (40, 42, "icmp", f"Sequence number ({C('Seq')})", "00 01 = the first ping", "same"),
+    (42, 58, "icmp", "Data: send time", "80 39 bc 6a …: when ping sent it", "copied back, so ping can time the round trip"),
+    (58, 98, "icmp", "Data: filler", "10 11 12 … 37: a counting pattern", "copied back"),
 ])
 
 T = lambda text: J(text, "struct-tcp")
@@ -254,6 +296,20 @@ TCP_GET = shade([
 ])
 
 # The first segment that carries application bytes. TCP does not interpret them.
+HTTP_200 = shade([
+    (0, 14, "eth", J("Ethernet header", "hex-eth"), "to the kernel’s side of tap0, from us · type 08 00 = IPv4"),
+    (14, 34, "ip", J("IPv4 header", "hex-ipv4"), "10.0.0.2 → 10.0.0.1 · length 01 11 = 273 · protocol 06 = TCP"),
+    (34, 38, "tcp", T(f"Ports ({C('SrcPort')} → {C('DstPort')})"), "00 50 → c6 8a = 80 → 50826: the request’s ports, swapped"),
+    (38, 42, "tcp", T(f"Sequence number ({C('Seq')})"), "00 00 03 e9 = 1001: our first byte of data (we started at 1000)"),
+    (42, 46, "tcp", T(f"Acknowledgment ({C('Ack')})"), "13 e8 5a af = 333994671 = the GET’s seq + 72: “got all 72 bytes”"),
+    (46, 48, "tcp", T(f"Header length + flags ({C('Flags')})"), "50 18: 20-byte header · PSH + ACK"),
+    (48, 54, "tcp", "Window, checksum, urgent", "ff ff = 65535 · 5c f6 · 00 00"),
+    (54, 71, "http", "Status line", C("HTTP/1.0 200 OK")),
+    (71, 151, "http", "Headers", f"{C('Content-Type')}, {C('Content-Length: 134')}, {C('Connection: close')}"),
+    (151, 153, "http", "Blank line", "0d 0a: the headers end here"),
+    (153, 287, "f0", "Body", "134 bytes of HTML, not shown"),
+])
+
 TCP_DATA = shade([
     (0, 14, "eth", J("Ethernet header", "hex-eth"), "same link as the handshake"),
     (14, 34, "ip", J("IPv4 header", "hex-ipv4"), "protocol 06 = TCP · 112 bytes in total"),
@@ -359,6 +415,11 @@ close(5) = 0</code></pre>
         </aside>
       </section>"""
 
+# The request is wrapped innermost-first on the way out, and unwrapped
+# outermost-first on the way in.
+WRAP = {"tcp": (0, "wrap"), "ip": (1, "wrap"), "eth": (2, "wrap")}
+PEEL = {"eth": (0, "peel"), "ip": (1, "peel"), "tcp": (2, "peel")}
+
 SLIDES["scope"] = (
     "The networking stack lives in the kernel",
     STRACE_SLIDE
@@ -367,11 +428,11 @@ SLIDES["scope"] = (
         "hex-google-req",
         "curl handed over 75 bytes. The kernel sent 141.",
         "tcpdump · the request as it left the container · curl → google.com:80",
-        "        " + dump(b("google-http-req"), spans(GOOGLE_HTTP_REQ), cls="hexdump tight"),
-        table(["Field", "Value"], GOOGLE_HTTP_REQ),
+        "        " + dump(b("google-http-req"), spans(GOOGLE_HTTP_REQ), cls="hexdump tight", steps=WRAP),
+        table(["Field", "Value"], GOOGLE_HTTP_REQ, steps=WRAP),
         note("curl only wrote the green part: the HTTP request. The kernel added the 66 bytes in front of it. "
              "Ethernet says which machine on the local network, IPv4 which computer on the internet, "
-             "and TCP which program, plus where these bytes sit in the stream."),
+             "and TCP which program, plus where these bytes sit in the stream.", step=3),
         cls="hex-dense",
     )
     + "\n\n"
@@ -379,10 +440,10 @@ SLIDES["scope"] = (
         "hex-google-301",
         "Google’s reply comes back wrapped the same way",
         "tcpdump · the response as it arrived · first 132 of 620 bytes",
-        "        " + dump(b("google-http-301")[:132], spans(GOOGLE_HTTP_301), cls="hexdump tight"),
-        table(["Field", "Value"], GOOGLE_HTTP_301),
+        "        " + dump(b("google-http-301")[:132], spans(GOOGLE_HTTP_301), cls="hexdump tight", steps=PEEL),
+        table(["Field", "Value"], GOOGLE_HTTP_301, steps=PEEL),
         note("The kernel strips Ethernet, IPv4 and TCP, and gives curl only the green part: "
-             "“301, this page has moved to www.google.com”."),
+             "“301, this page has moved to www.google.com”.", step=3),
         cls="hex-dense",
     ),
 )
@@ -431,24 +492,35 @@ SLIDES["arp"] = (
     ),
 )
 
-SLIDES["ping"] = (
-    "Answering a ping",
+SLIDES["ipv4"] = (
+    "An IPv4 packet, as a Go struct",
     section(
         "hex-ipv4",
-        "A real ping: the IPv4 header",
+        "An IPv4 header, on a real packet",
         "captures/talk-http.jsonl · frame 2 (from <code>ping -c 1 10.0.0.2</code>)",
         "        " + dump(b("ping"), spans(IPV4)),
         table(["Field", "Value"], IPV4),
-    )
-    + "\n\n"
-    + section(
+    ),
+)
+
+SLIDES["icmp"] = (
+    "Answering a ping",
+    section(
         "hex-icmp",
-        "A real ping: the ICMP message",
-        "captures/talk-http.jsonl · frame 2 (same ping)",
-        "        " + dump(b("ping"), spans(ICMP)),
-        table(["Field", "Value"], ICMP),
-        note("Headers are big-endian, but ping writes its send time in the CPU’s own order (little-endian on x86 and ARM), "
-             "because only ping reads it back. Read big-endian, those 8 bytes would be 9.2 × 10<sup>18</sup> seconds."),
+        "A real ping, there and back",
+        "captures/talk-http.jsonl · frames 2 and 3",
+        label("<strong>Frame 2</strong> · kernel → mytcp · ping asks: “are you there?”"),
+        "        " + dump(b("ping"), spans(ICMP), cls="hexdump tight"),
+        label("<strong>Frame 3</strong> · mytcp → kernel · our echo reply", step=0),
+        "        " + dump(b("ping-reply"), spans(ICMP), cls="hexdump tight", step=0),
+        table(["Field", "Request (frame 2)", "Reply (frame 3)"], ICMP, col_step=(4, 0)),
+        note("The reply is the request sent back with its type changed, the addresses swapped and the checksums redone.", step=1),
+        """        <aside class="notes">
+          The send time is little-endian: headers are big-endian, but ping writes its own
+          timestamp in the CPU's order because only ping reads it back. 80 39 bc 6a read
+          little-endian is 1790720384 s = 22:19:44 UTC; read big-endian it would be 9.2e18 s.
+        </aside>""",
+        cls="hex-dense",
     ),
 )
 
@@ -479,10 +551,10 @@ SLIDES["tcp"] = (
         "captures/talk-http.jsonl · frames 4, 5 and 6",
         label("<strong>Frame 4</strong> · curl → mytcp · SYN"),
         "        " + dump(b("syn"), HANDSHAKE, cls="hexdump tight stack3"),
-        label("<strong>Frame 5</strong> · mytcp → curl · SYN+ACK"),
-        "        " + dump(b("synack"), HANDSHAKE, cls="hexdump tight stack3"),
-        label("<strong>Frame 6</strong> · curl → mytcp · ACK"),
-        "        " + dump(b("ack"), HANDSHAKE, cls="hexdump tight stack3"),
+        label("<strong>Frame 5</strong> · mytcp → curl · SYN+ACK", step=0),
+        "        " + dump(b("synack"), HANDSHAKE, cls="hexdump tight stack3", step=0),
+        label("<strong>Frame 6</strong> · curl → mytcp · ACK", step=1),
+        "        " + dump(b("ack"), HANDSHAKE, cls="hexdump tight stack3", step=1),
         '        <p class="hexkey">'
         + chip(band(HANDSHAKE, 0)) + J("Ethernet", "hex-eth") + " "
         + chip(band(HANDSHAKE, 14)) + J("IPv4", "hex-ipv4") + " "
@@ -499,8 +571,8 @@ SLIDES["tcp"] = (
         f"<th>{chip(band(HANDSHAKE, 42))}Ack (bytes 42–45)</th></tr></thead>\n"
         "          <tbody>\n"
         "            <tr><td>4</td><td>curl → mytcp</td><td>a0 02 · SYN, 40-byte header</td><td>13 e8 5a 66 = 333994598 (curl’s start)</td><td>0</td></tr>\n"
-        "            <tr><td>5</td><td>mytcp → curl</td><td>50 12 · SYN+ACK, 20-byte header</td><td>00 00 03 e8 = 1000 (ours; fixed so captures read easily)</td><td>333994599 = theirs + 1</td></tr>\n"
-        "            <tr><td>6</td><td>curl → mytcp</td><td>50 10 · ACK, 20-byte header</td><td>333994599</td><td>00 00 03 e9 = 1001 = ours + 1</td></tr>\n"
+        '            <tr class="fragment" data-fragment-index="0"><td>5</td><td>mytcp → curl</td><td>50 12 · SYN+ACK, 20-byte header</td><td>00 00 03 e8 = 1000 (ours; fixed so captures read easily)</td><td>333994599 = theirs + 1</td></tr>\n'
+        '            <tr class="fragment" data-fragment-index="1"><td>6</td><td>curl → mytcp</td><td>50 10 · ACK, 20-byte header</td><td>333994599</td><td>00 00 03 e9 = 1001 = ours + 1</td></tr>\n'
         "          </tbody>\n        </table>",
     )
     + "\n\n"
@@ -519,10 +591,21 @@ SLIDES["http"] = (
     section(
         "hex-http",
         "One HTTP request, every layer at once",
-        "captures/talk-http.jsonl · frame 7 of the same connection, after the handshake",
-        "        " + dump(b("http-get"), spans(TCP_GET)),
-        table(["Field", "Value"], TCP_GET),
-        note(f"Same {J('three-way handshake', 'hex-handshake')} as before. The TCP header is now 20 bytes (no options); the new part is the payload."),
+        "captures/talk-http.jsonl · frame 7 · curl → mytcp, after the handshake",
+        "        " + dump(b("http-get"), spans(TCP_GET), steps=PEEL),
+        table(["Field", "Value"], TCP_GET, steps=PEEL),
+        note("On the way in, mytcp peels Ethernet, IPv4 and TCP in turn. What’s left, the green part, is all the HTTP code sees.", step=3),
+        cls="hex-dense",
+    )
+    + "\n\n"
+    + section(
+        "hex-http-200",
+        "The response, wrapped on the way out",
+        "captures/talk-http.jsonl · frame 8 · mytcp → curl · first 153 of 287 bytes",
+        "        " + dump(b("http-200")[:153], spans(HTTP_200), steps=WRAP),
+        table(["Field", "Value"], HTTP_200, steps=WRAP),
+        note("The HTTP code returns plain text. TCP, then IPv4, then Ethernet each put a header in front, the same work the kernel did for curl.", step=3),
+        cls="hex-dense",
     ),
 )
 
@@ -534,8 +617,8 @@ SLIDES["tls"] = (
         "The same GET, plain and encrypted",
         "curl http://10.0.0.2/ · captures/talk-http.jsonl frame 7",
         "        " + dump(b("http-get"), P, cls="hexdump tight"),
-        '        <p class="code-path">curl -k https://10.0.0.2/ through mintls · captures/talk-https-diy.jsonl frame 31</p>',
-        "        " + dump(b("tls-get"), S, cls="hexdump tight"),
+        '        <p class="code-path fragment" data-fragment-index="0">curl -k https://10.0.0.2/ through mintls · captures/talk-https-diy.jsonl frame 31</p>',
+        "        " + dump(b("tls-get"), S, cls="hexdump tight", step=0),
         '        <p class="hexkey">'
         + chip(P[0][2]) + J("Ethernet", "hex-eth") + " "
         + chip(P[1][2]) + J("IPv4", "hex-ipv4") + " "
@@ -546,7 +629,7 @@ SLIDES["tls"] = (
         + chip(S[5][2]) + J("ciphertext", "tls-seal") + " (72) "
         + chip(S[6][2]) + J("tag", "tls-seal") + " (16)</p>",
         note("Bytes 0–53 have the same layout; only lengths, IDs, ports, sequence numbers, checksums and tap0’s MAC differ. "
-             "96 = 8 + 72 + 16: the ciphertext is as long as the plain GET, so encryption hides the content, not the size."),
+             "96 = 8 + 72 + 16: the ciphertext is as long as the plain GET, so encryption hides the content, not the size.", step=1),
     ),
 )
 

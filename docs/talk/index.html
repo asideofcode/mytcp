@@ -15,8 +15,7 @@
 <body>
   <div class="reveal">
     <div class="slides">
-
-      <!-- ========== TITLE ========== -->
+      <!-- ========== TITLE AND HOOK: WHAT THE KERNEL HIDES ========== -->
       <section class="divider" data-background-gradient="linear-gradient(145deg, #0c1218 0%, #152028 45%, #1a2f2a 100%)">
         <p class="brand">mytcp</p>
         <h1>From TAP to curl</h1>
@@ -30,7 +29,7 @@
 
       <section id="life-of-curl">
         <h2>The life of a curl request</h2>
-        <div class="mermaid journey">
+        <div class="mermaid journey" data-steps data-controls>
 sequenceDiagram
   participant A as curl
   participant K as Kernel
@@ -99,86 +98,86 @@ close(5) = 0</code></pre>
       <section id="hex-google-req" class="hex-dense">
         <h2>curl handed over 75 bytes. The kernel sent 141.</h2>
         <p class="code-path">tcpdump · the request as it left the container · curl → google.com:80</p>
-        <pre class="hexdump tight"><code class="nohighlight" data-noescape>00000000  <span class="eth1">02 42 f2 e3 9b 63</span> <span class="eth2">02 42  ac 11 00 04</span> <span class="eth1">08 00</span> <span class="ip1">45</span> <span class="ip2">00</span>  |<span class="eth1">.B...c</span><span class="eth2">.B....</span><span class="eth1">..</span><span class="ip1">E</span><span class="ip2">.</span>|
-00000010  <span class="ip1">00 7f</span> <span class="ip2">5e 7f</span> <span class="ip1">40 00</span> <span class="ip2">40</span> <span class="ip1">06</span>  <span class="ip2">82 78</span> <span class="ip1">ac 11 00 04</span> <span class="ip2">8e fb</span>  |<span class="ip1">..</span><span class="ip2">^.</span><span class="ip1">@.</span><span class="ip2">@</span><span class="ip1">.</span><span class="ip2">.x</span><span class="ip1">....</span><span class="ip2">..</span>|
-00000020  <span class="ip2">1e 71</span> <span class="tcp1">e4 d4 00 50</span> <span class="tcp2">73 7d  38 96</span> <span class="tcp1">1b 3b b8 d8</span> <span class="tcp2">80 18</span>  |<span class="ip2">.q</span><span class="tcp1">...P</span><span class="tcp2">s}8.</span><span class="tcp1">.;..</span><span class="tcp2">..</span>|
-00000030  <span class="tcp1">02 00</span> <span class="tcp2">59 f3 00 00</span> <span class="tcp1">01 01  08 0a 16 a0 3f d2 d7 2a</span>  |<span class="tcp1">..</span><span class="tcp2">Y...</span><span class="tcp1">......?..*</span>|
-00000040  <span class="tcp1">fb a7</span> <span class="http1">48 45 41 44 20 2f  20 48 54 54 50 2f 31 2e</span>  |<span class="tcp1">..</span><span class="http1">HEAD / HTTP/1.</span>|
+        <pre class="hexdump tight"><code class="nohighlight" data-noescape>00000000  <span class="eth1 fragment wrap" data-fragment-index="2">02 42 f2 e3 9b 63</span> <span class="eth2 fragment wrap" data-fragment-index="2">02 42  ac 11 00 04</span> <span class="eth1 fragment wrap" data-fragment-index="2">08 00</span> <span class="ip1 fragment wrap" data-fragment-index="1">45</span> <span class="ip2 fragment wrap" data-fragment-index="1">00</span>  |<span class="eth1 fragment wrap" data-fragment-index="2">.B...c</span><span class="eth2 fragment wrap" data-fragment-index="2">.B....</span><span class="eth1 fragment wrap" data-fragment-index="2">..</span><span class="ip1 fragment wrap" data-fragment-index="1">E</span><span class="ip2 fragment wrap" data-fragment-index="1">.</span>|
+00000010  <span class="ip1 fragment wrap" data-fragment-index="1">00 7f</span> <span class="ip2 fragment wrap" data-fragment-index="1">5e 7f</span> <span class="ip1 fragment wrap" data-fragment-index="1">40 00</span> <span class="ip2 fragment wrap" data-fragment-index="1">40</span> <span class="ip1 fragment wrap" data-fragment-index="1">06</span>  <span class="ip2 fragment wrap" data-fragment-index="1">82 78</span> <span class="ip1 fragment wrap" data-fragment-index="1">ac 11 00 04</span> <span class="ip2 fragment wrap" data-fragment-index="1">8e fb</span>  |<span class="ip1 fragment wrap" data-fragment-index="1">..</span><span class="ip2 fragment wrap" data-fragment-index="1">^.</span><span class="ip1 fragment wrap" data-fragment-index="1">@.</span><span class="ip2 fragment wrap" data-fragment-index="1">@</span><span class="ip1 fragment wrap" data-fragment-index="1">.</span><span class="ip2 fragment wrap" data-fragment-index="1">.x</span><span class="ip1 fragment wrap" data-fragment-index="1">....</span><span class="ip2 fragment wrap" data-fragment-index="1">..</span>|
+00000020  <span class="ip2 fragment wrap" data-fragment-index="1">1e 71</span> <span class="tcp1 fragment wrap" data-fragment-index="0">e4 d4 00 50</span> <span class="tcp2 fragment wrap" data-fragment-index="0">73 7d  38 96</span> <span class="tcp1 fragment wrap" data-fragment-index="0">1b 3b b8 d8</span> <span class="tcp2 fragment wrap" data-fragment-index="0">80 18</span>  |<span class="ip2 fragment wrap" data-fragment-index="1">.q</span><span class="tcp1 fragment wrap" data-fragment-index="0">...P</span><span class="tcp2 fragment wrap" data-fragment-index="0">s}8.</span><span class="tcp1 fragment wrap" data-fragment-index="0">.;..</span><span class="tcp2 fragment wrap" data-fragment-index="0">..</span>|
+00000030  <span class="tcp1 fragment wrap" data-fragment-index="0">02 00</span> <span class="tcp2 fragment wrap" data-fragment-index="0">59 f3 00 00</span> <span class="tcp1 fragment wrap" data-fragment-index="0">01 01  08 0a 16 a0 3f d2 d7 2a</span>  |<span class="tcp1 fragment wrap" data-fragment-index="0">..</span><span class="tcp2 fragment wrap" data-fragment-index="0">Y...</span><span class="tcp1 fragment wrap" data-fragment-index="0">......?..*</span>|
+00000040  <span class="tcp1 fragment wrap" data-fragment-index="0">fb a7</span> <span class="http1">48 45 41 44 20 2f  20 48 54 54 50 2f 31 2e</span>  |<span class="tcp1 fragment wrap" data-fragment-index="0">..</span><span class="http1">HEAD / HTTP/1.</span>|
 00000050  <span class="http1">31 0d 0a 48 6f 73 74 3a  20 67 6f 6f 67 6c 65 2e</span>  |<span class="http1">1..Host: google.</span>|
 00000060  <span class="http1">63 6f 6d 0d 0a 55 73 65  72 2d 41 67 65 6e 74 3a</span>  |<span class="http1">com..User-Agent:</span>|
 00000070  <span class="http1">20 63 75 72 6c 2f 37 2e  38 38 2e 31 0d 0a 41 63</span>  |<span class="http1"> curl/7.88.1..Ac</span>|
 00000080  <span class="http1">63 65 70 74 3a 20 2a 2f  2a 0d 0a 0d 0a</span>           |<span class="http1">cept: */*....</span>|
 0000008d</code></pre>
-        <table class="compact hexlegend">
+        <table class="compact hexlegend fields">
           <thead><tr><th></th><th>Bytes</th><th>Field</th><th>Value</th></tr></thead>
           <tbody>
-            <tr><td><span class="chip eth1"></span></td><td>0–5</td><td><a class="jump" href="#/struct-eth">Destination MAC (<code>Dst</code>)</a></td><td>02:42:f2:e3:9b:63 = the Docker bridge gateway</td></tr>
-            <tr><td><span class="chip eth2"></span></td><td>6–11</td><td><a class="jump" href="#/struct-eth">Source MAC (<code>Src</code>)</a></td><td>02:42:ac:11:00:04 = this container</td></tr>
-            <tr><td><span class="chip eth1"></span></td><td>12–13</td><td><a class="jump" href="#/struct-eth">EtherType (<code>Type</code>)</a></td><td>08 00 = IPv4</td></tr>
-            <tr><td><span class="chip ip1"></span></td><td>14</td><td>Version + header length</td><td>45: 4 = IPv4, 5 × 4 = 20-byte header</td></tr>
-            <tr><td><span class="chip ip2"></span></td><td>15</td><td>Traffic class</td><td>00 = ordinary traffic</td></tr>
-            <tr><td><span class="chip ip1"></span></td><td>16–17</td><td>Total length</td><td>00 7f = 127: this header + TCP + HTTP</td></tr>
-            <tr><td><span class="chip ip2"></span></td><td>18–19</td><td>Identification</td><td>5e 7f</td></tr>
-            <tr><td><span class="chip ip1"></span></td><td>20–21</td><td>Flags + fragment offset</td><td>40 00 = don’t fragment</td></tr>
-            <tr><td><span class="chip ip2"></span></td><td>22</td><td>Time to live</td><td>40 = 64 hops</td></tr>
-            <tr><td><span class="chip ip1"></span></td><td>23</td><td>Protocol (<code>Proto</code>)</td><td>06 = TCP, so the next header is TCP</td></tr>
-            <tr><td><span class="chip ip2"></span></td><td>24–25</td><td>Header checksum</td><td>82 78: covers these 20 bytes only</td></tr>
-            <tr><td><span class="chip ip1"></span></td><td>26–29</td><td>Source IP (<code>Src</code>)</td><td>ac 11 00 04 = 172.17.0.4</td></tr>
-            <tr><td><span class="chip ip2"></span></td><td>30–33</td><td>Destination IP (<code>Dst</code>)</td><td>8e fb 1e 71 = 142.251.30.113</td></tr>
-            <tr><td><span class="chip tcp1"></span></td><td>34–37</td><td><a class="jump" href="#/struct-tcp">Ports (<code>SrcPort</code> → <code>DstPort</code>)</a></td><td>e4 d4 → 00 50 = 58580 → 80</td></tr>
-            <tr><td><span class="chip tcp2"></span></td><td>38–41</td><td><a class="jump" href="#/struct-tcp">Sequence number (<code>Seq</code>)</a></td><td>73 7d 38 96 = the SYN’s start + 1: first byte of this HTTP</td></tr>
-            <tr><td><span class="chip tcp1"></span></td><td>42–45</td><td><a class="jump" href="#/struct-tcp">Acknowledgment (<code>Ack</code>)</a></td><td>1b 3b b8 d8 = 456898776: “got everything before the server’s first byte”</td></tr>
-            <tr><td><span class="chip tcp2"></span></td><td>46–47</td><td><a class="jump" href="#/struct-tcp">Header length + flags (<code>Flags</code>)</a></td><td>80 18: 8 × 4 = 32-byte header · 0x18 = PSH + ACK</td></tr>
-            <tr><td><span class="chip tcp1"></span></td><td>48–49</td><td><a class="jump" href="#/struct-tcp">Window (<code>Window</code>)</a></td><td>02 00 = 512</td></tr>
-            <tr><td><span class="chip tcp2"></span></td><td>50–53</td><td>Checksum + urgent</td><td>59 f3 · urgent 00 00 (unused)</td></tr>
-            <tr><td><span class="chip tcp1"></span></td><td>54–65</td><td>Options</td><td>01 01 pad · timestamps (kind 8): TSval / TSecr for RTT</td></tr>
+            <tr class="fragment dim-in" data-fragment-index="2"><td><span class="chip eth1"></span></td><td>0–5</td><td><a class="jump" href="#/struct-eth">Destination MAC (<code>Dst</code>)</a></td><td>02:42:f2:e3:9b:63 = the Docker bridge gateway</td></tr>
+            <tr class="fragment dim-in" data-fragment-index="2"><td><span class="chip eth2"></span></td><td>6–11</td><td><a class="jump" href="#/struct-eth">Source MAC (<code>Src</code>)</a></td><td>02:42:ac:11:00:04 = this container</td></tr>
+            <tr class="fragment dim-in" data-fragment-index="2"><td><span class="chip eth1"></span></td><td>12–13</td><td><a class="jump" href="#/struct-eth">EtherType (<code>Type</code>)</a></td><td>08 00 = IPv4</td></tr>
+            <tr class="fragment dim-in" data-fragment-index="1"><td><span class="chip ip1"></span></td><td>14</td><td>Version + header length</td><td>45: 4 = IPv4, 5 × 4 = 20-byte header</td></tr>
+            <tr class="fragment dim-in" data-fragment-index="1"><td><span class="chip ip2"></span></td><td>15</td><td>Traffic class</td><td>00 = ordinary traffic</td></tr>
+            <tr class="fragment dim-in" data-fragment-index="1"><td><span class="chip ip1"></span></td><td>16–17</td><td>Total length</td><td>00 7f = 127: this header + TCP + HTTP</td></tr>
+            <tr class="fragment dim-in" data-fragment-index="1"><td><span class="chip ip2"></span></td><td>18–19</td><td>Identification</td><td>5e 7f</td></tr>
+            <tr class="fragment dim-in" data-fragment-index="1"><td><span class="chip ip1"></span></td><td>20–21</td><td>Flags + fragment offset</td><td>40 00 = don’t fragment</td></tr>
+            <tr class="fragment dim-in" data-fragment-index="1"><td><span class="chip ip2"></span></td><td>22</td><td>Time to live</td><td>40 = 64 hops</td></tr>
+            <tr class="fragment dim-in" data-fragment-index="1"><td><span class="chip ip1"></span></td><td>23</td><td>Protocol (<code>Proto</code>)</td><td>06 = TCP, so the next header is TCP</td></tr>
+            <tr class="fragment dim-in" data-fragment-index="1"><td><span class="chip ip2"></span></td><td>24–25</td><td>Header checksum</td><td>82 78: covers these 20 bytes only</td></tr>
+            <tr class="fragment dim-in" data-fragment-index="1"><td><span class="chip ip1"></span></td><td>26–29</td><td>Source IP (<code>Src</code>)</td><td>ac 11 00 04 = 172.17.0.4</td></tr>
+            <tr class="fragment dim-in" data-fragment-index="1"><td><span class="chip ip2"></span></td><td>30–33</td><td>Destination IP (<code>Dst</code>)</td><td>8e fb 1e 71 = 142.251.30.113</td></tr>
+            <tr class="fragment dim-in" data-fragment-index="0"><td><span class="chip tcp1"></span></td><td>34–37</td><td><a class="jump" href="#/struct-tcp">Ports (<code>SrcPort</code> → <code>DstPort</code>)</a></td><td>e4 d4 → 00 50 = 58580 → 80</td></tr>
+            <tr class="fragment dim-in" data-fragment-index="0"><td><span class="chip tcp2"></span></td><td>38–41</td><td><a class="jump" href="#/struct-tcp">Sequence number (<code>Seq</code>)</a></td><td>73 7d 38 96 = the SYN’s start + 1: first byte of this HTTP</td></tr>
+            <tr class="fragment dim-in" data-fragment-index="0"><td><span class="chip tcp1"></span></td><td>42–45</td><td><a class="jump" href="#/struct-tcp">Acknowledgment (<code>Ack</code>)</a></td><td>1b 3b b8 d8 = 456898776: “got everything before the server’s first byte”</td></tr>
+            <tr class="fragment dim-in" data-fragment-index="0"><td><span class="chip tcp2"></span></td><td>46–47</td><td><a class="jump" href="#/struct-tcp">Header length + flags (<code>Flags</code>)</a></td><td>80 18: 8 × 4 = 32-byte header · 0x18 = PSH + ACK</td></tr>
+            <tr class="fragment dim-in" data-fragment-index="0"><td><span class="chip tcp1"></span></td><td>48–49</td><td><a class="jump" href="#/struct-tcp">Window (<code>Window</code>)</a></td><td>02 00 = 512</td></tr>
+            <tr class="fragment dim-in" data-fragment-index="0"><td><span class="chip tcp2"></span></td><td>50–53</td><td>Checksum + urgent</td><td>59 f3 · urgent 00 00 (unused)</td></tr>
+            <tr class="fragment dim-in" data-fragment-index="0"><td><span class="chip tcp1"></span></td><td>54–65</td><td>Options</td><td>01 01 pad · timestamps (kind 8): TSval / TSecr for RTT</td></tr>
             <tr><td><span class="chip http1"></span></td><td>66–140</td><td>HTTP request</td><td>75 bytes from <code>sendto</code>: <code>HEAD / HTTP/1.1</code>, Host, User-Agent, Accept, blank line</td></tr>
           </tbody>
         </table>
-        <p class="soft hexnote">curl only wrote the green part: the HTTP request. The kernel added the 66 bytes in front of it. Ethernet says which machine on the local network, IPv4 which computer on the internet, and TCP which program, plus where these bytes sit in the stream.</p>
+        <p class="soft hexnote fragment" data-fragment-index="3">curl only wrote the green part: the HTTP request. The kernel added the 66 bytes in front of it. Ethernet says which machine on the local network, IPv4 which computer on the internet, and TCP which program, plus where these bytes sit in the stream.</p>
       </section>
 
       <section id="hex-google-301" class="hex-dense">
         <h2>Google’s reply comes back wrapped the same way</h2>
         <p class="code-path">tcpdump · the response as it arrived · first 132 of 620 bytes</p>
-        <pre class="hexdump tight"><code class="nohighlight" data-noescape>00000000  <span class="eth1">02 42 ac 11 00 04</span> <span class="eth2">02 42  f2 e3 9b 63</span> <span class="eth1">08 00</span> <span class="ip1">45</span> <span class="ip2">00</span>  |<span class="eth1">.B....</span><span class="eth2">.B...c</span><span class="eth1">..</span><span class="ip1">E</span><span class="ip2">.</span>|
-00000010  <span class="ip1">02 5e</span> <span class="ip2">98 55</span> <span class="ip1">00 00</span> <span class="ip2">3f</span> <span class="ip1">06</span>  <span class="ip2">87 c3</span> <span class="ip1">8e fb 1e 71</span> <span class="ip2">ac 11</span>  |<span class="ip1">.^</span><span class="ip2">.U</span><span class="ip1">..</span><span class="ip2">?</span><span class="ip1">.</span><span class="ip2">..</span><span class="ip1">...q</span><span class="ip2">..</span>|
-00000020  <span class="ip2">00 04</span> <span class="tcp1">00 50 e4 d4</span> <span class="tcp2">1b 3b  b8 d8</span> <span class="tcp1">73 7d 38 e1</span> <span class="tcp2">80 18</span>  |<span class="ip2">..</span><span class="tcp1">.P..</span><span class="tcp2">.;..</span><span class="tcp1">s}8.</span><span class="tcp2">..</span>|
-00000030  <span class="tcp1">10 00</span> <span class="tcp2">55 96 00 00</span> <span class="tcp1">01 01  08 0a d7 2a fb bf 16 a0</span>  |<span class="tcp1">..</span><span class="tcp2">U...</span><span class="tcp1">.....*....</span>|
-00000040  <span class="tcp1">3f d2</span> <span class="http1">48 54 54 50 2f 31  2e 31 20 33 30 31 20 4d</span>  |<span class="tcp1">?.</span><span class="http1">HTTP/1.1 301 M</span>|
+        <pre class="hexdump tight"><code class="nohighlight" data-noescape>00000000  <span class="eth1 fragment peel" data-fragment-index="0">02 42 ac 11 00 04</span> <span class="eth2 fragment peel" data-fragment-index="0">02 42  f2 e3 9b 63</span> <span class="eth1 fragment peel" data-fragment-index="0">08 00</span> <span class="ip1 fragment peel" data-fragment-index="1">45</span> <span class="ip2 fragment peel" data-fragment-index="1">00</span>  |<span class="eth1 fragment peel" data-fragment-index="0">.B....</span><span class="eth2 fragment peel" data-fragment-index="0">.B...c</span><span class="eth1 fragment peel" data-fragment-index="0">..</span><span class="ip1 fragment peel" data-fragment-index="1">E</span><span class="ip2 fragment peel" data-fragment-index="1">.</span>|
+00000010  <span class="ip1 fragment peel" data-fragment-index="1">02 5e</span> <span class="ip2 fragment peel" data-fragment-index="1">98 55</span> <span class="ip1 fragment peel" data-fragment-index="1">00 00</span> <span class="ip2 fragment peel" data-fragment-index="1">3f</span> <span class="ip1 fragment peel" data-fragment-index="1">06</span>  <span class="ip2 fragment peel" data-fragment-index="1">87 c3</span> <span class="ip1 fragment peel" data-fragment-index="1">8e fb 1e 71</span> <span class="ip2 fragment peel" data-fragment-index="1">ac 11</span>  |<span class="ip1 fragment peel" data-fragment-index="1">.^</span><span class="ip2 fragment peel" data-fragment-index="1">.U</span><span class="ip1 fragment peel" data-fragment-index="1">..</span><span class="ip2 fragment peel" data-fragment-index="1">?</span><span class="ip1 fragment peel" data-fragment-index="1">.</span><span class="ip2 fragment peel" data-fragment-index="1">..</span><span class="ip1 fragment peel" data-fragment-index="1">...q</span><span class="ip2 fragment peel" data-fragment-index="1">..</span>|
+00000020  <span class="ip2 fragment peel" data-fragment-index="1">00 04</span> <span class="tcp1 fragment peel" data-fragment-index="2">00 50 e4 d4</span> <span class="tcp2 fragment peel" data-fragment-index="2">1b 3b  b8 d8</span> <span class="tcp1 fragment peel" data-fragment-index="2">73 7d 38 e1</span> <span class="tcp2 fragment peel" data-fragment-index="2">80 18</span>  |<span class="ip2 fragment peel" data-fragment-index="1">..</span><span class="tcp1 fragment peel" data-fragment-index="2">.P..</span><span class="tcp2 fragment peel" data-fragment-index="2">.;..</span><span class="tcp1 fragment peel" data-fragment-index="2">s}8.</span><span class="tcp2 fragment peel" data-fragment-index="2">..</span>|
+00000030  <span class="tcp1 fragment peel" data-fragment-index="2">10 00</span> <span class="tcp2 fragment peel" data-fragment-index="2">55 96 00 00</span> <span class="tcp1 fragment peel" data-fragment-index="2">01 01  08 0a d7 2a fb bf 16 a0</span>  |<span class="tcp1 fragment peel" data-fragment-index="2">..</span><span class="tcp2 fragment peel" data-fragment-index="2">U...</span><span class="tcp1 fragment peel" data-fragment-index="2">.....*....</span>|
+00000040  <span class="tcp1 fragment peel" data-fragment-index="2">3f d2</span> <span class="http1">48 54 54 50 2f 31  2e 31 20 33 30 31 20 4d</span>  |<span class="tcp1 fragment peel" data-fragment-index="2">?.</span><span class="http1">HTTP/1.1 301 M</span>|
 00000050  <span class="http1">6f 76 65 64 20 50 65 72  6d 61 6e 65 6e 74 6c 79</span>  |<span class="http1">oved Permanently</span>|
 00000060  <span class="http1">0d 0a</span> <span class="http2">4c 6f 63 61 74 69  6f 6e 3a 20 68 74 74 70</span>  |<span class="http1">..</span><span class="http2">Location: http</span>|
 00000070  <span class="http2">3a 2f 2f 77 77 77 2e 67  6f 6f 67 6c 65 2e 63 6f</span>  |<span class="http2">://www.google.co</span>|
 00000080  <span class="http2">6d 2f 0d 0a</span>                                       |<span class="http2">m/..</span>|
 00000084</code></pre>
-        <table class="compact hexlegend">
+        <table class="compact hexlegend fields">
           <thead><tr><th></th><th>Bytes</th><th>Field</th><th>Value</th></tr></thead>
           <tbody>
-            <tr><td><span class="chip eth1"></span></td><td>0–5</td><td><a class="jump" href="#/struct-eth">Destination MAC (<code>Dst</code>)</a></td><td>02:42:ac:11:00:04 = this container</td></tr>
-            <tr><td><span class="chip eth2"></span></td><td>6–11</td><td><a class="jump" href="#/struct-eth">Source MAC (<code>Src</code>)</a></td><td>02:42:f2:e3:9b:63 = the Docker bridge gateway</td></tr>
-            <tr><td><span class="chip eth1"></span></td><td>12–13</td><td><a class="jump" href="#/struct-eth">EtherType (<code>Type</code>)</a></td><td>08 00 = IPv4</td></tr>
-            <tr><td><span class="chip ip1"></span></td><td>14</td><td>Version + header length</td><td>45: 4 = IPv4, 5 × 4 = 20-byte header</td></tr>
-            <tr><td><span class="chip ip2"></span></td><td>15</td><td>Traffic class</td><td>00</td></tr>
-            <tr><td><span class="chip ip1"></span></td><td>16–17</td><td>Total length</td><td>02 5e = 606 (full packet; dump is truncated)</td></tr>
-            <tr><td><span class="chip ip2"></span></td><td>18–19</td><td>Identification</td><td>98 55</td></tr>
-            <tr><td><span class="chip ip1"></span></td><td>20–21</td><td>Flags + fragment offset</td><td>00 00: may fragment</td></tr>
-            <tr><td><span class="chip ip2"></span></td><td>22</td><td>Time to live</td><td>3f = 63: one hop already spent</td></tr>
-            <tr><td><span class="chip ip1"></span></td><td>23</td><td>Protocol (<code>Proto</code>)</td><td>06 = TCP</td></tr>
-            <tr><td><span class="chip ip2"></span></td><td>24–25</td><td>Header checksum</td><td>87 c3</td></tr>
-            <tr><td><span class="chip ip1"></span></td><td>26–29</td><td>Source IP (<code>Src</code>)</td><td>8e fb 1e 71 = 142.251.30.113</td></tr>
-            <tr><td><span class="chip ip2"></span></td><td>30–33</td><td>Destination IP (<code>Dst</code>)</td><td>ac 11 00 04 = 172.17.0.4</td></tr>
-            <tr><td><span class="chip tcp1"></span></td><td>34–37</td><td><a class="jump" href="#/struct-tcp">Ports (<code>SrcPort</code> → <code>DstPort</code>)</a></td><td>00 50 → e4 d4 = 80 → 58580</td></tr>
-            <tr><td><span class="chip tcp2"></span></td><td>38–41</td><td><a class="jump" href="#/struct-tcp">Sequence number (<code>Seq</code>)</a></td><td>1b 3b b8 d8 = 456898776: first byte of the response (= client’s earlier ack)</td></tr>
-            <tr><td><span class="chip tcp1"></span></td><td>42–45</td><td><a class="jump" href="#/struct-tcp">Acknowledgment (<code>Ack</code>)</a></td><td>73 7d 38 e1 = curl’s sequence number + 75: “I got all 75 bytes of your request”</td></tr>
-            <tr><td><span class="chip tcp2"></span></td><td>46–47</td><td><a class="jump" href="#/struct-tcp">Header length + flags (<code>Flags</code>)</a></td><td>80 18: 32-byte header · 0x18 = PSH + ACK</td></tr>
-            <tr><td><span class="chip tcp1"></span></td><td>48–49</td><td><a class="jump" href="#/struct-tcp">Window (<code>Window</code>)</a></td><td>10 00 = 4096</td></tr>
-            <tr><td><span class="chip tcp2"></span></td><td>50–53</td><td>Checksum + urgent</td><td>55 96 · urgent 00 00</td></tr>
-            <tr><td><span class="chip tcp1"></span></td><td>54–65</td><td>Options</td><td>01 01 pad · timestamps: TSval / echoed TSecr</td></tr>
+            <tr class="fragment semi-fade-out" data-fragment-index="0"><td><span class="chip eth1"></span></td><td>0–5</td><td><a class="jump" href="#/struct-eth">Destination MAC (<code>Dst</code>)</a></td><td>02:42:ac:11:00:04 = this container</td></tr>
+            <tr class="fragment semi-fade-out" data-fragment-index="0"><td><span class="chip eth2"></span></td><td>6–11</td><td><a class="jump" href="#/struct-eth">Source MAC (<code>Src</code>)</a></td><td>02:42:f2:e3:9b:63 = the Docker bridge gateway</td></tr>
+            <tr class="fragment semi-fade-out" data-fragment-index="0"><td><span class="chip eth1"></span></td><td>12–13</td><td><a class="jump" href="#/struct-eth">EtherType (<code>Type</code>)</a></td><td>08 00 = IPv4</td></tr>
+            <tr class="fragment semi-fade-out" data-fragment-index="1"><td><span class="chip ip1"></span></td><td>14</td><td>Version + header length</td><td>45: 4 = IPv4, 5 × 4 = 20-byte header</td></tr>
+            <tr class="fragment semi-fade-out" data-fragment-index="1"><td><span class="chip ip2"></span></td><td>15</td><td>Traffic class</td><td>00</td></tr>
+            <tr class="fragment semi-fade-out" data-fragment-index="1"><td><span class="chip ip1"></span></td><td>16–17</td><td>Total length</td><td>02 5e = 606 (full packet; dump is truncated)</td></tr>
+            <tr class="fragment semi-fade-out" data-fragment-index="1"><td><span class="chip ip2"></span></td><td>18–19</td><td>Identification</td><td>98 55</td></tr>
+            <tr class="fragment semi-fade-out" data-fragment-index="1"><td><span class="chip ip1"></span></td><td>20–21</td><td>Flags + fragment offset</td><td>00 00: may fragment</td></tr>
+            <tr class="fragment semi-fade-out" data-fragment-index="1"><td><span class="chip ip2"></span></td><td>22</td><td>Time to live</td><td>3f = 63: one hop already spent</td></tr>
+            <tr class="fragment semi-fade-out" data-fragment-index="1"><td><span class="chip ip1"></span></td><td>23</td><td>Protocol (<code>Proto</code>)</td><td>06 = TCP</td></tr>
+            <tr class="fragment semi-fade-out" data-fragment-index="1"><td><span class="chip ip2"></span></td><td>24–25</td><td>Header checksum</td><td>87 c3</td></tr>
+            <tr class="fragment semi-fade-out" data-fragment-index="1"><td><span class="chip ip1"></span></td><td>26–29</td><td>Source IP (<code>Src</code>)</td><td>8e fb 1e 71 = 142.251.30.113</td></tr>
+            <tr class="fragment semi-fade-out" data-fragment-index="1"><td><span class="chip ip2"></span></td><td>30–33</td><td>Destination IP (<code>Dst</code>)</td><td>ac 11 00 04 = 172.17.0.4</td></tr>
+            <tr class="fragment semi-fade-out" data-fragment-index="2"><td><span class="chip tcp1"></span></td><td>34–37</td><td><a class="jump" href="#/struct-tcp">Ports (<code>SrcPort</code> → <code>DstPort</code>)</a></td><td>00 50 → e4 d4 = 80 → 58580</td></tr>
+            <tr class="fragment semi-fade-out" data-fragment-index="2"><td><span class="chip tcp2"></span></td><td>38–41</td><td><a class="jump" href="#/struct-tcp">Sequence number (<code>Seq</code>)</a></td><td>1b 3b b8 d8 = 456898776: first byte of the response (= client’s earlier ack)</td></tr>
+            <tr class="fragment semi-fade-out" data-fragment-index="2"><td><span class="chip tcp1"></span></td><td>42–45</td><td><a class="jump" href="#/struct-tcp">Acknowledgment (<code>Ack</code>)</a></td><td>73 7d 38 e1 = curl’s sequence number + 75: “I got all 75 bytes of your request”</td></tr>
+            <tr class="fragment semi-fade-out" data-fragment-index="2"><td><span class="chip tcp2"></span></td><td>46–47</td><td><a class="jump" href="#/struct-tcp">Header length + flags (<code>Flags</code>)</a></td><td>80 18: 32-byte header · 0x18 = PSH + ACK</td></tr>
+            <tr class="fragment semi-fade-out" data-fragment-index="2"><td><span class="chip tcp1"></span></td><td>48–49</td><td><a class="jump" href="#/struct-tcp">Window (<code>Window</code>)</a></td><td>10 00 = 4096</td></tr>
+            <tr class="fragment semi-fade-out" data-fragment-index="2"><td><span class="chip tcp2"></span></td><td>50–53</td><td>Checksum + urgent</td><td>55 96 · urgent 00 00</td></tr>
+            <tr class="fragment semi-fade-out" data-fragment-index="2"><td><span class="chip tcp1"></span></td><td>54–65</td><td>Options</td><td>01 01 pad · timestamps: TSval / echoed TSecr</td></tr>
             <tr><td><span class="chip http1"></span></td><td>66–97</td><td>Status line</td><td><code>HTTP/1.1 301 Moved Permanently</code></td></tr>
             <tr><td><span class="chip http2"></span></td><td>98–131</td><td>Location</td><td><code>Location: http://www.google.com/</code> — the redirect</td></tr>
           </tbody>
         </table>
-        <p class="soft hexnote">The kernel strips Ethernet, IPv4 and TCP, and gives curl only the green part: “301, this page has moved to www.google.com”.</p>
+        <p class="soft hexnote fragment" data-fragment-index="3">The kernel strips Ethernet, IPv4 and TCP, and gives curl only the green part: “301, this page has moved to www.google.com”.</p>
       </section>
       <!-- /hexdump:scope -->
 
@@ -196,25 +195,12 @@ close(5) = 0</code></pre>
           The infinite tape and a fixed window are the same string, seen two ways.
           Hello world and a hard problem are both trajectories through its arrangements.
           CPU, scheduler, NIC, TCP: each one only moves that window.
-          Land on the theorem line, then go to what they’ll leave with.
+          Land on the theorem line, then tell them how you got here.
         </aside>
       </section>
 
-      <!-- ========== GOALS ========== -->
-      <section>
-        <h2>What you’ll leave with</h2>
-        <ol class="goals">
-          <li class="fragment"><strong>Why</strong> — a reason to take apart something that already works</li>
-          <li class="fragment"><strong>Scope</strong> — a teaching stack, not production TCP</li>
-          <li class="fragment"><strong>Giants</strong> — great systems are built from many people’s work</li>
-          <li class="fragment"><strong>Foresight</strong> — protocols that shipped <em>and</em> left room for what came later</li>
-          <li class="fragment"><strong>The onion</strong> — every layer has the same shape</li>
-          <li class="fragment"><strong>A demo</strong> — from <code>ping</code> to HTTPS, answered by our code</li>
-          <li class="fragment"><strong>Where to dig</strong> — each layer is a whole field of its own</li>
-        </ol>
-      </section>
 
-      <!-- ========== ORIGIN STORY ========== -->
+      <!-- ========== WHY, AND THE SCOPE ========== -->
       <section>
         <h2>How I got here</h2>
         <div class="story">
@@ -237,16 +223,6 @@ close(5) = 0</code></pre>
           Second talk: even the transport layer is swappable at hyperscale.
           This project is me trying to earn that intuition by building it.
         </aside>
-      </section>
-
-      <!-- ========== A: HOOK ========== -->
-      <section>
-        <h2>What happens when you type this?</h2>
-        <pre class="big-code"><code class="language-bash">curl http://10.0.0.2/</code></pre>
-        <div class="black-box fragment">
-          <span>the kernel handles it · looks like magic</span>
-        </div>
-        <p class="fragment soft">Today we open the box. Not to replace it, just to <em>see</em> inside.</p>
       </section>
 
       <section>
@@ -284,89 +260,20 @@ close(5) = 0</code></pre>
       </section>
 
       <section>
-        <h2>The lab setup</h2>
-        <div class="lab-diagram">
-          <div class="box">ping / curl</div>
-          <div class="arrow">↓</div>
-          <div class="box">kernel IP stack</div>
-          <div class="arrow">↓</div>
-          <div class="box accent">tap0 · 10.0.0.1/24</div>
-          <div class="arrow bidirectional">↕ Ethernet frames</div>
-          <div class="box accent">mytcp · 10.0.0.2</div>
-        </div>
-        <p class="fragment soft">A TAP device hands us whole Ethernet frames, so we handle ARP ourselves. It runs in a Linux container, because macOS has no TAP.</p>
+        <h2>What you’ll leave with</h2>
+        <ol class="goals">
+          <li class="fragment"><strong>Why</strong> — a reason to take apart something that already works</li>
+          <li class="fragment"><strong>Scope</strong> — a teaching stack, not production TCP</li>
+          <li class="fragment"><strong>The onion</strong> — every layer has the same shape</li>
+          <li class="fragment"><strong>A demo</strong> — from <code>ping</code> to HTTPS, answered by our code</li>
+          <li class="fragment"><strong>Giants</strong> — great systems are built from many people’s work</li>
+          <li class="fragment"><strong>Foresight</strong> — protocols that shipped <em>and</em> left room for what came later</li>
+          <li class="fragment"><strong>Where to dig</strong> — each layer is a whole field of its own</li>
+        </ol>
       </section>
 
-      <!-- ========== B: GIANTS ========== -->
-      <section class="divider" data-background-gradient="linear-gradient(160deg, #0c1218 0%, #1a1810 100%)">
-        <p class="section-label">Background</p>
-        <h2>Standing on giants</h2>
-        <p class="lede">Nothing here was invented alone.</p>
-      </section>
 
-      <section>
-        <h2>Great systems are built by many people</h2>
-        <p class="lede">Every layer we lean on is the sum of decades of shared work.</p>
-        <ul>
-          <li class="fragment">Standards (RFCs) agreed between rival vendors, often after failures</li>
-          <li class="fragment">One web request passes through a NIC, a kernel, a TLS library, curl and a CDN</li>
-          <li class="fragment">Our few thousand lines stand on millions of hours</li>
-        </ul>
-        <p class="fragment note-line">That isn’t a caveat. It’s the point.</p>
-      </section>
-
-      <section>
-        <h2>Good protocols leave room for what comes next</h2>
-        <p class="soft">They didn’t predict the future. They drew clean boundaries that later ideas could plug into.</p>
-        <table class="compact">
-          <thead><tr><th>Design choice</th><th>What it made possible</th></tr></thead>
-          <tr><td>IP only promises best-effort delivery</td><td>Reliability could be added on top (TCP)</td></tr>
-          <tr class="fragment"><td>TCP offers a plain stream of bytes</td><td>New apps never needed changes to IP</td></tr>
-          <tr class="fragment"><td>Every header has a “what’s inside” field</td><td>Each layer can carry many kinds of next layer</td></tr>
-          <tr class="fragment"><td>TLS sits <em>above</em> TCP</td><td>Encryption is optional</td></tr>
-        </table>
-      </section>
-
-      <section>
-        <h2>AWS replaced TCP underneath: SRD</h2>
-        <p class="lede">Apps still open TCP sockets. Underneath, AWS can carry the traffic with its own protocol.</p>
-        <ul>
-          <li class="fragment"><strong>SRD</strong> (Scalable Reliable Datagram) runs on AWS’s Nitro network card</li>
-          <li class="fragment">Sprays one flow across many network paths</li>
-          <li class="fragment">Resends lost packets within microseconds, in hardware</li>
-          <li class="fragment">Delivers everything, but <strong>out of order</strong>; the layer above puts it back in order</li>
-        </ul>
-        <p class="fragment punch">TCP isn’t mandatory everywhere. Neither is TLS.</p>
-        <aside class="notes">
-          Sources: AWS "A Cloud-Optimized Transport Protocol for Elastic and Scalable HPC"
-          (IEEE Micro 2020); EFA and ENA Express docs. EFA exposes SRD for HPC/ML.
-          ENA Express carries ordinary TCP/UDP flows between instances over SRD.
-        </aside>
-      </section>
-
-      <section>
-        <h2>Where SRD sits under your TCP connection</h2>
-        <pre class="diagram-code"><code class="nohighlight">your app     ── TCP socket          (API unchanged)
-                     │
-Nitro card   ── SRD                 multipath · fast retransmit
-                     │              reliable, out-of-order
-fabric       ── many paths at once
-                     │
-peer Nitro   ── reorder → hand TCP bytes up</code></pre>
-        <p class="fragment soft">With ENA Express, ordinary TCP traffic between instances rides on SRD without the app noticing.
-          Because the layers are separate, AWS could replace the middle and leave both ends alone.</p>
-      </section>
-
-      <section>
-        <h2>HTTPS is HTTP plus one optional layer</h2>
-        <pre class="diagram-code"><code class="nohighlight">HTTP  ─┬─ straight on TCP     (-app http)
-       └─ inside TLS on TCP   (-app https or -app https-diy)
-                 ↑
-         the same TCP code underneath</code></pre>
-        <p class="fragment soft">We added HTTPS late in the project, and nothing below TCP had to change.</p>
-      </section>
-
-      <!-- ========== C: ONION ========== -->
+      <!-- ========== THE MAP: THE ONION AND THE LAB ========== -->
       <section class="divider" data-background-gradient="linear-gradient(160deg, #0c1218 0%, #102018 100%)">
         <p class="section-label">The pattern</p>
         <h2>The onion interface</h2>
@@ -403,6 +310,85 @@ peer Nitro   ── reorder → hand TCP bytes up</code></pre>
           TCP’s current text is RFC 9293, which obsoletes 793. HTTP semantics live in RFC 9110; 9112 is the wire format.
           The last row is the point: you can keep going. GRE, VXLAN, QUIC and SRD are all someone deciding what a payload means.
         </aside>
+      </section>
+
+      <section>
+        <h2>The lab setup</h2>
+        <div class="lab-diagram">
+          <div class="box">ping / curl</div>
+          <div class="arrow">↓</div>
+          <div class="box">kernel IP stack</div>
+          <div class="arrow">↓</div>
+          <div class="box accent">tap0 · 10.0.0.1/24</div>
+          <div class="arrow bidirectional">↕ Ethernet frames</div>
+          <div class="box accent">mytcp · 10.0.0.2</div>
+        </div>
+        <p class="fragment soft">A TAP device hands us whole Ethernet frames, so we handle ARP ourselves. It runs in a Linux container, because macOS has no TAP.</p>
+      </section>
+
+      <section class="divider" data-background-gradient="linear-gradient(160deg, #0c1218 0%, #10181f 100%)">
+        <p class="section-label">Building it</p>
+        <h2>One layer at a time</h2>
+        <p class="lede">From the bottom up, with a demo at each step.</p>
+      </section>
+
+      <section data-auto-animate>
+        <h2 data-id="btitle">The stack we’re going to build</h2>
+        <div class="layer-board" data-id="board">
+          <div class="layer empty" data-id="app"><span class="lbl">APPLICATION</span><span class="val">( )</span></div>
+          <div class="layer empty optional" data-id="sec"><span class="lbl">SECURITY <em>optional</em></span><span class="val">( )</span></div>
+          <div class="layer-row"><div class="layer empty" data-id="ctl"><span class="lbl">CONTROL</span><span class="val">( )</span></div><div class="layer empty" data-id="trn"><span class="lbl">TRANSPORT</span><span class="val">( )</span></div></div>
+          <div class="layer empty" data-id="net"><span class="lbl">NETWORK</span><span class="val">( )</span></div>
+          <div class="layer empty" data-id="lnk"><span class="lbl">LINK</span><span class="val">( )</span></div>
+          <div class="layer empty" data-id="wir"><span class="lbl">WIRE</span><span class="val">( )</span></div>
+        </div>
+        <p class="soft">Every layer does the same job: read bytes, decide, write bytes.</p>
+      </section>
+
+
+      <!-- ========== BUILD IT, BOTTOM UP: WIRE ========== -->
+      <section data-auto-animate>
+        <h2 data-id="btitle">Bottom layer: the wire</h2>
+        <div class="layer-board" data-id="board">
+          <div class="layer empty" data-id="app"><span class="lbl">APPLICATION</span><span class="val">( )</span></div>
+          <div class="layer empty optional" data-id="sec"><span class="lbl">SECURITY <em>optional</em></span><span class="val">( )</span></div>
+          <div class="layer-row"><div class="layer empty" data-id="ctl"><span class="lbl">CONTROL</span><span class="val">( )</span></div><div class="layer empty" data-id="trn"><span class="lbl">TRANSPORT</span><span class="val">( )</span></div></div>
+          <div class="layer empty" data-id="net"><span class="lbl">NETWORK</span><span class="val">( )</span></div>
+          <div class="layer empty" data-id="lnk"><span class="lbl">LINK</span><span class="val">( )</span></div>
+          <div class="layer filled" data-id="wir"><span class="lbl">WIRE</span><span class="val">Linux TAP device</span></div>
+        </div>
+        <p class="soft">TAP hands us every Ethernet frame sent to 10.0.0.2, raw.</p>
+      </section>
+
+      <section>
+        <h2>Opening a TAP device</h2>
+        <p class="code-path">internal/tap/tap_linux.go</p>
+        <pre><code class="language-go" data-trim>// Linux creates TUN and TAP devices through one special file
+f, err := os.OpenFile("/dev/net/tun", os.O_RDWR, 0)
+
+// ask for a TAP device (whole Ethernet frames) named e.g. "tap0"
+var req ifreq
+req.flags = iffTap | iffNoPI   // no extra packet-info header
+copy(req.name[:], name)
+syscall.Syscall(SYS_IOCTL, fd, tunSetIff, …)
+
+// from now on, each read returns one frame and each write sends one</code></pre>
+        <p class="rabbit fragment"><span>Rabbit holes</span> kernel networking internals · virtual NICs (veth, TAP, macvlan) · XDP / eBPF · NIC offloads</p>
+      </section>
+
+
+      <!-- ========== ETHERNET: SAME NETWORK, MAC ADDRESSES ========== -->
+      <section data-auto-animate>
+        <h2 data-id="btitle">Next: the link layer</h2>
+        <div class="layer-board" data-id="board">
+          <div class="layer empty" data-id="app"><span class="lbl">APPLICATION</span><span class="val">( )</span></div>
+          <div class="layer empty optional" data-id="sec"><span class="lbl">SECURITY <em>optional</em></span><span class="val">( )</span></div>
+          <div class="layer-row"><div class="layer empty" data-id="ctl"><span class="lbl">CONTROL</span><span class="val">( )</span></div><div class="layer empty" data-id="trn"><span class="lbl">TRANSPORT</span><span class="val">( )</span></div></div>
+          <div class="layer empty" data-id="net"><span class="lbl">NETWORK</span><span class="val">( )</span></div>
+          <div class="layer filled" data-id="lnk"><span class="lbl">LINK</span><span class="val">Ethernet + ARP</span></div>
+          <div class="layer filled" data-id="wir"><span class="lbl">WIRE</span><span class="val">Linux TAP device</span></div>
+        </div>
+        <p class="soft">Ethernet: machines on the same network talk using MAC addresses.</p>
       </section>
 
       <section id="struct-eth">
@@ -453,7 +439,7 @@ jq -r 'select(.n==0).data' captures/talk-http.jsonl | xxd -r -p | hexdump -C</co
 00000010  <span class="f0">08 00 06 04 00 01 ee ea  f3 0f 57 32 0a 00 00 01</span>  |<span class="f0">..........W2....</span>|
 00000020  <span class="f0">00 00 00 00 00 00 0a 00  00 02</span>                    |<span class="f0">..........</span>|
 0000002a</code></pre>
-        <table class="compact hexlegend">
+        <table class="compact hexlegend fields">
           <thead><tr><th></th><th>Bytes</th><th>Field</th><th>Value</th></tr></thead>
           <tbody>
             <tr><td><span class="chip eth1"></span></td><td>0–5</td><td><a class="jump" href="#/struct-eth">Destination MAC (<code>Dst</code>)</a></td><td>ff:ff:ff:ff:ff:ff = broadcast: everyone on the link</td></tr>
@@ -469,85 +455,24 @@ jq -r 'select(.n==0).data' captures/talk-http.jsonl | xxd -r -p | hexdump -C</co
 
       <section>
         <h2>Choosing the next layer by its type field</h2>
-        <p class="code-path">internal/stack/stack.go</p>
-        <pre><code class="language-go" data-trim>// the Ethernet payload is an IPv4 packet: parse its header
-pkt, err := ip4.Parse(f.Payload)
+        <p class="code-path">internal/stack/stack.go · HandleFrame</p>
+        <pre><code class="language-go" data-trim>f, err := eth.Parse(b)
 // …
 
-// IPv4's "protocol" field says what its payload is
-switch pkt.Proto {
-case ip4.ProtoICMP: // 1 = ICMP, e.g. ping
-    return s.handleICMP(f.Src, pkt)
-case ip4.ProtoTCP: // 6 = TCP: peel one more layer, hand it to TCP
-    seg, err := tcp.Parse(pkt.Payload)
-    // …
-    return s.tcp.Handle(f.Src, pkt.Src, seg)
+// the EtherType field says what the payload is
+switch f.Type {
+case eth.TypeARP:  // 0x0806: "who has this IP?"
+    return s.handleARP(f)
+case eth.TypeIPv4: // 0x0800: an IP packet, for later
+    return s.handleIPv4(f)
+default:           // usually IPv6 chatter from the host: drop it
+    return nil
 }</code></pre>
-        <p class="fragment soft">Each protocol only parses its own header. The <code>stack</code> package reads the type field and hands the payload to the right parser.</p>
+        <p class="fragment soft">Each protocol only parses its own header. The <code>stack</code> package reads the type field and hands the payload to the right parser. Frame 0 said <code>08 06</code>, so next: ARP.</p>
       </section>
 
-      <!-- ========== LAYER BOARD + CODE ========== -->
-      <section class="divider" data-background-gradient="linear-gradient(160deg, #0c1218 0%, #10181f 100%)">
-        <p class="section-label">Building it</p>
-        <h2>One layer at a time</h2>
-        <p class="lede">From the bottom up, with a demo at each step.</p>
-      </section>
 
-      <section>
-        <h2>The stack we’re going to build</h2>
-        <div class="layer-board" data-id="board">
-          <div class="layer empty" data-id="app"><span class="lbl">APPLICATION</span><span class="val">( )</span></div>
-          <div class="layer empty optional" data-id="sec"><span class="lbl">SECURITY <em>optional</em></span><span class="val">( )</span></div>
-          <div class="layer empty" data-id="trn"><span class="lbl">TRANSPORT</span><span class="val">( )</span></div>
-          <div class="layer empty" data-id="net"><span class="lbl">NETWORK</span><span class="val">( )</span></div>
-          <div class="layer empty" data-id="lnk"><span class="lbl">LINK</span><span class="val">( )</span></div>
-          <div class="layer empty" data-id="wir"><span class="lbl">WIRE</span><span class="val">( )</span></div>
-        </div>
-        <p class="soft">Every layer does the same job: read bytes, decide, write bytes.</p>
-      </section>
-
-      <section data-auto-animate>
-        <h2 data-id="btitle">Bottom layer: the wire</h2>
-        <div class="layer-board" data-id="board">
-          <div class="layer empty" data-id="app"><span class="lbl">APPLICATION</span><span class="val">( )</span></div>
-          <div class="layer empty optional" data-id="sec"><span class="lbl">SECURITY <em>optional</em></span><span class="val">( )</span></div>
-          <div class="layer empty" data-id="trn"><span class="lbl">TRANSPORT</span><span class="val">( )</span></div>
-          <div class="layer empty" data-id="net"><span class="lbl">NETWORK</span><span class="val">( )</span></div>
-          <div class="layer empty" data-id="lnk"><span class="lbl">LINK</span><span class="val">( )</span></div>
-          <div class="layer filled" data-id="wir"><span class="lbl">WIRE</span><span class="val">Linux TAP device</span></div>
-        </div>
-        <p class="soft">We open a TAP device, which gives us raw Ethernet frames.</p>
-      </section>
-
-      <section>
-        <h2>Opening a TAP device</h2>
-        <p class="code-path">internal/tap/tap_linux.go</p>
-        <pre><code class="language-go" data-trim>// Linux creates TUN and TAP devices through one special file
-f, err := os.OpenFile("/dev/net/tun", os.O_RDWR, 0)
-
-// ask for a TAP device (whole Ethernet frames) named e.g. "tap0"
-var req ifreq
-req.flags = iffTap | iffNoPI   // no extra packet-info header
-copy(req.name[:], name)
-syscall.Syscall(SYS_IOCTL, fd, tunSetIff, …)
-
-// from now on, each read returns one frame and each write sends one</code></pre>
-        <p class="rabbit fragment"><span>Rabbit holes</span> kernel networking internals · virtual NICs (veth, TAP, macvlan) · XDP / eBPF · NIC offloads</p>
-      </section>
-
-      <section data-auto-animate>
-        <h2 data-id="btitle">Next: the link layer</h2>
-        <div class="layer-board" data-id="board">
-          <div class="layer empty" data-id="app"><span class="lbl">APPLICATION</span><span class="val">( )</span></div>
-          <div class="layer empty optional" data-id="sec"><span class="lbl">SECURITY <em>optional</em></span><span class="val">( )</span></div>
-          <div class="layer empty" data-id="trn"><span class="lbl">TRANSPORT</span><span class="val">( )</span></div>
-          <div class="layer empty" data-id="net"><span class="lbl">NETWORK</span><span class="val">( )</span></div>
-          <div class="layer filled" data-id="lnk"><span class="lbl">LINK</span><span class="val">Ethernet + ARP</span></div>
-          <div class="layer filled" data-id="wir"><span class="lbl">WIRE</span><span class="val">Linux TAP device</span></div>
-        </div>
-        <p class="soft">Before any ping, the kernel asks by ARP: “who has 10.0.0.2?”</p>
-      </section>
-
+      <!-- ========== ARP: WHICH MAC OWNS THIS IP? ========== -->
       <section id="struct-arp">
         <h2>An ARP packet, as a Go struct</h2>
         <p class="code-path">internal/arp/arp.go</p>
@@ -562,7 +487,7 @@ type Packet struct {
 
 func Parse(b []byte) (Packet, error) { /* … */ } // bytes → struct
 func (p Packet) Marshal() []byte     { /* … */ } // struct → bytes</code></pre>
-        <p class="fragment soft">ARP asks “who has this IP address?”, and the owner replies with its MAC address.</p>
+        <p class="fragment soft">ARP: ask the local network which MAC address owns this IP. The owner replies with its MAC.</p>
       </section>
 
       <section>
@@ -598,7 +523,7 @@ return s.writeFrame(out)</code></pre>
 00000010  <span class="arp2">08 00</span> <span class="arp1">06</span> <span class="arp2">04</span> <span class="arp1">00 02</span> <span class="f0">02 00  00 00 00 02 0a 00 00 02</span>  |<span class="arp2">..</span><span class="arp1">.</span><span class="arp2">.</span><span class="arp1">..</span><span class="f0">..........</span>|
 00000020  <span class="f0">ee ea f3 0f 57 32 0a 00  00 01</span>                    |<span class="f0">....W2....</span>|
 0000002a</code></pre>
-        <table class="compact hexlegend">
+        <table class="compact hexlegend fields2">
           <thead><tr><th></th><th>Bytes</th><th>Field</th><th>Request (frame 0)</th><th>Reply (frame 1)</th></tr></thead>
           <tbody>
             <tr><td><span class="chip f0"></span></td><td>0–13</td><td><a class="jump" href="#/hex-eth">Ethernet header</a></td><td>to ff:ff:ff:ff:ff:ff (everyone), from ee:ea:f3:0f:57:32</td><td>to ee:ea:f3:0f:57:32 (only the asker), from 02:00:00:00:00:02</td></tr>
@@ -626,7 +551,7 @@ return s.writeFrame(out)</code></pre>
 00000010  <span class="f0">08 00 06 04 00 02</span> <span class="arp1">02 00  00 00 00 02</span> <span class="arp2">0a 00 00 02</span>  |<span class="f0">......</span><span class="arp1">......</span><span class="arp2">....</span>|
 00000020  <span class="arp1">ee ea f3 0f 57 32</span> <span class="arp2">0a 00  00 01</span>                    |<span class="arp1">....W2</span><span class="arp2">....</span>|
 0000002a</code></pre>
-        <table class="compact hexlegend">
+        <table class="compact hexlegend fields2">
           <thead><tr><th></th><th>Bytes</th><th>Field</th><th>Request (frame 0)</th><th>Reply (frame 1)</th></tr></thead>
           <tbody>
             <tr><td><span class="chip f0"></span></td><td>0–21</td><td><a class="jump" href="#/hex-arp-header">Ethernet + ARP header</a></td><td>broadcast request · Op = 1</td><td>unicast reply · Op = 2</td></tr>
@@ -640,17 +565,102 @@ return s.writeFrame(out)</code></pre>
       </section>
       <!-- /hexdump:arp -->
 
+
+      <!-- ========== IPV4: ACROSS NETWORKS ========== -->
       <section data-auto-animate>
         <h2 data-id="btitle">Next: the network layer</h2>
         <div class="layer-board" data-id="board">
           <div class="layer empty" data-id="app"><span class="lbl">APPLICATION</span><span class="val">( )</span></div>
           <div class="layer empty optional" data-id="sec"><span class="lbl">SECURITY <em>optional</em></span><span class="val">( )</span></div>
-          <div class="layer empty" data-id="trn"><span class="lbl">TRANSPORT</span><span class="val">( )</span></div>
-          <div class="layer filled" data-id="net"><span class="lbl">NETWORK</span><span class="val">IPv4 + ping (ICMP echo)</span></div>
+          <div class="layer-row"><div class="layer empty" data-id="ctl"><span class="lbl">CONTROL</span><span class="val">( )</span></div><div class="layer empty" data-id="trn"><span class="lbl">TRANSPORT</span><span class="val">( )</span></div></div>
+          <div class="layer filled" data-id="net"><span class="lbl">NETWORK</span><span class="val">IPv4</span></div>
           <div class="layer filled" data-id="lnk"><span class="lbl">LINK</span><span class="val">Ethernet + ARP</span></div>
           <div class="layer filled" data-id="wir"><span class="lbl">WIRE</span><span class="val">Linux TAP device</span></div>
         </div>
-        <p class="soft">Now <code>ping 10.0.0.2</code> gets a reply.</p>
+        <p class="soft">IPv4: addresses that work across networks, so routers can carry a packet hop by hop.</p>
+      </section>
+
+      <section id="struct-ip">
+        <h2>An IPv4 packet, as a Go struct</h2>
+        <p class="code-path">internal/ip4/ipv4.go</p>
+        <pre><code class="language-go" data-trim>// one hop-by-hop packet: where from, where to, and what's inside
+type Packet struct {
+    TOS       uint8  // type of service; 0 means ordinary traffic
+    ID        uint16 // identification, used to reassemble fragments
+    FlagsFrag uint16 // flags (e.g. Don't Fragment) + fragment offset
+    TTL       uint8  // hop limit: every router takes one off
+    Proto     uint8  // what's in Payload: 1 = ICMP, 6 = TCP
+    Src       net.IP // source address
+    Dst       net.IP // destination address
+    Payload   []byte // the ICMP or TCP message
+}
+
+func Parse(b []byte) (Packet, error) { /* … */ } // bytes → struct
+func (p Packet) Marshal() []byte     { /* … */ } // struct → bytes</code></pre>
+        <p class="fragment soft">MAC addresses only reach the next machine. An IP address names the final destination, so the packet keeps it the whole way while the Ethernet header is rewritten at every hop.</p>
+      </section>
+
+      <!-- hexdump:ipv4 -->
+      <section id="hex-ipv4">
+        <h2>An IPv4 header, on a real packet</h2>
+        <p class="code-path">captures/talk-http.jsonl · frame 2 (from <code>ping -c 1 10.0.0.2</code>)</p>
+        <pre class="hexdump"><code class="nohighlight" data-noescape>00000000  <span class="f0">02 00 00 00 00 02 ee ea  f3 0f 57 32 08 00</span> <span class="ip1">45</span> <span class="ip2">00</span>  |<span class="f0">..........W2..</span><span class="ip1">E</span><span class="ip2">.</span>|
+00000010  <span class="ip1">00 54</span> <span class="ip2">c6 d3</span> <span class="ip1">40 00</span> <span class="ip2">40</span> <span class="ip1">01</span>  <span class="ip2">5f d3</span> <span class="ip1">0a 00 00 01</span> <span class="ip2">0a 00</span>  |<span class="ip1">.T</span><span class="ip2">..</span><span class="ip1">@.</span><span class="ip2">@</span><span class="ip1">.</span><span class="ip2">_.</span><span class="ip1">....</span><span class="ip2">..</span>|
+00000020  <span class="ip2">00 02</span> <span class="f0">08 00 40 fe 00 07  00 01 80 39 bc 6a 00 00</span>  |<span class="ip2">..</span><span class="f0">..@......9.j..</span>|
+00000030  <span class="f0">00 00 b9 82 02 00 00 00  00 00 10 11 12 13 14 15</span>  |<span class="f0">................</span>|
+00000040  <span class="f0">16 17 18 19 1a 1b 1c 1d  1e 1f 20 21 22 23 24 25</span>  |<span class="f0">.......... !"#$%</span>|
+00000050  <span class="f0">26 27 28 29 2a 2b 2c 2d  2e 2f 30 31 32 33 34 35</span>  |<span class="f0">&amp;'()*+,-./012345</span>|
+00000060  <span class="f0">36 37</span>                                             |<span class="f0">67</span>|
+00000062</code></pre>
+        <table class="compact hexlegend fields">
+          <thead><tr><th></th><th>Bytes</th><th>Field</th><th>Value</th></tr></thead>
+          <tbody>
+            <tr><td><span class="chip f0"></span></td><td>0–13</td><td><a class="jump" href="#/hex-eth">Ethernet header</a></td><td>type 08 00 = IPv4</td></tr>
+            <tr><td><span class="chip ip1"></span></td><td>14</td><td>Version + header length</td><td>45: 4 = IPv4, 5 × 4 = 20-byte header</td></tr>
+            <tr><td><span class="chip ip2"></span></td><td>15</td><td>Traffic class (DSCP/ECN)</td><td>00 = ordinary traffic</td></tr>
+            <tr><td><span class="chip ip1"></span></td><td>16–17</td><td>Total length</td><td>00 54 = 84 bytes: this header plus the ICMP message</td></tr>
+            <tr><td><span class="chip ip2"></span></td><td>18–19</td><td>Identification</td><td>c6 d3: only used if the packet gets split up</td></tr>
+            <tr><td><span class="chip ip1"></span></td><td>20–21</td><td>Flags + fragment offset</td><td>40 00 = “don’t fragment”, and this isn’t a fragment</td></tr>
+            <tr><td><span class="chip ip2"></span></td><td>22</td><td>Time to live</td><td>40 = 64 hops before a router throws it away</td></tr>
+            <tr><td><span class="chip ip1"></span></td><td>23</td><td>Protocol (<code>Proto</code>)</td><td>01 = ICMP, so <code>icmp.ParseEcho</code> gets the payload</td></tr>
+            <tr><td><span class="chip ip2"></span></td><td>24–25</td><td>Header checksum</td><td>5f d3: covers these 20 bytes only</td></tr>
+            <tr><td><span class="chip ip1"></span></td><td>26–29</td><td>Source IP (<code>Src</code>)</td><td>0a 00 00 01 = 10.0.0.1</td></tr>
+            <tr><td><span class="chip ip2"></span></td><td>30–33</td><td>Destination IP (<code>Dst</code>)</td><td>0a 00 00 02 = 10.0.0.2</td></tr>
+            <tr><td><span class="chip f0"></span></td><td>34–97</td><td><a class="jump" href="#/hex-icmp">ICMP message</a></td><td>an echo request, unpacked in the ICMP section</td></tr>
+          </tbody>
+        </table>
+      </section>
+      <!-- /hexdump:ipv4 -->
+
+      <section>
+        <h2>IPv4’s protocol field picks the next layer</h2>
+        <p class="code-path">internal/stack/stack.go · handleIPv4</p>
+        <pre><code class="language-go" data-trim>// after ip4.Parse, the protocol field says what the payload is
+switch pkt.Proto {
+case ip4.ProtoICMP: // 1 = ICMP, e.g. ping
+    return s.handleICMP(f.Src, pkt)
+case ip4.ProtoTCP:  // 6 = TCP: peel one more layer
+    seg, err := tcp.Parse(pkt.Payload)
+    // …
+    return s.tcp.Handle(f.Src, pkt.Src, seg)
+}</code></pre>
+        <p class="fragment soft">ICMP and TCP both ride on IPv4, side by side. The ping said <code>01</code>, so ICMP first.</p>
+        <p class="rabbit fragment"><span>Rabbit holes</span> routing (OSPF, BGP) · IPv6 · NAT · MTU and fragmentation</p>
+      </section>
+
+
+      <!-- ========== ICMP: PROVING THE IP PATH ========== -->
+      <section data-auto-animate>
+        <h2 data-id="btitle">On top of IPv4: ICMP</h2>
+        <div class="layer-board" data-id="board">
+          <div class="layer empty" data-id="app"><span class="lbl">APPLICATION</span><span class="val">( )</span></div>
+          <div class="layer empty optional" data-id="sec"><span class="lbl">SECURITY <em>optional</em></span><span class="val">( )</span></div>
+          <div class="layer-row"><div class="layer filled" data-id="ctl"><span class="lbl">CONTROL</span><span class="val">ICMP</span></div><div class="layer empty" data-id="trn"><span class="lbl">TRANSPORT</span><span class="val">( )</span></div></div>
+          <div class="layer filled" data-id="net"><span class="lbl">NETWORK</span><span class="val">IPv4</span></div>
+          <div class="layer filled" data-id="lnk"><span class="lbl">LINK</span><span class="val">Ethernet + ARP</span></div>
+          <div class="layer filled" data-id="wir"><span class="lbl">WIRE</span><span class="val">Linux TAP device</span></div>
+        </div>
+        <p class="soft">ICMP is the network’s own messages. Ping asks “can a packet get there and back?”, which proves the IP path works before we trust it with TCP.</p>
       </section>
 
       <section>
@@ -666,44 +676,15 @@ if echo.Type != icmp.TypeEcho {
 reply := icmp.ReplyFrom(echo)
 // Marshal adds a fresh checksum; send it back in IPv4, then Ethernet
 return s.sendIPv4(srcMAC, pkt.Src, ip4.ProtoICMP, reply.Marshal())</code></pre>
-        <p class="rabbit fragment"><span>Rabbit holes</span> routing (OSPF, BGP) · IPv6 · NAT · MTU and fragmentation · how traceroute works</p>
+        <p class="rabbit fragment"><span>Rabbit holes</span> how traceroute uses TTL and “time exceeded” · “destination unreachable” · path MTU discovery · why some firewalls drop ping</p>
       </section>
 
-      <!-- hexdump:ping -->
-      <section id="hex-ipv4">
-        <h2>A real ping: the IPv4 header</h2>
-        <p class="code-path">captures/talk-http.jsonl · frame 2 (from <code>ping -c 1 10.0.0.2</code>)</p>
-        <pre class="hexdump"><code class="nohighlight" data-noescape>00000000  <span class="f0">02 00 00 00 00 02 ee ea  f3 0f 57 32 08 00</span> <span class="ip1">45</span> <span class="ip2">00</span>  |<span class="f0">..........W2..</span><span class="ip1">E</span><span class="ip2">.</span>|
-00000010  <span class="ip1">00 54</span> <span class="ip2">c6 d3</span> <span class="ip1">40 00</span> <span class="ip2">40</span> <span class="ip1">01</span>  <span class="ip2">5f d3</span> <span class="ip1">0a 00 00 01</span> <span class="ip2">0a 00</span>  |<span class="ip1">.T</span><span class="ip2">..</span><span class="ip1">@.</span><span class="ip2">@</span><span class="ip1">.</span><span class="ip2">_.</span><span class="ip1">....</span><span class="ip2">..</span>|
-00000020  <span class="ip2">00 02</span> <span class="f0">08 00 40 fe 00 07  00 01 80 39 bc 6a 00 00</span>  |<span class="ip2">..</span><span class="f0">..@......9.j..</span>|
-00000030  <span class="f0">00 00 b9 82 02 00 00 00  00 00 10 11 12 13 14 15</span>  |<span class="f0">................</span>|
-00000040  <span class="f0">16 17 18 19 1a 1b 1c 1d  1e 1f 20 21 22 23 24 25</span>  |<span class="f0">.......... !"#$%</span>|
-00000050  <span class="f0">26 27 28 29 2a 2b 2c 2d  2e 2f 30 31 32 33 34 35</span>  |<span class="f0">&amp;'()*+,-./012345</span>|
-00000060  <span class="f0">36 37</span>                                             |<span class="f0">67</span>|
-00000062</code></pre>
-        <table class="compact hexlegend">
-          <thead><tr><th></th><th>Bytes</th><th>Field</th><th>Value</th></tr></thead>
-          <tbody>
-            <tr><td><span class="chip f0"></span></td><td>0–13</td><td><a class="jump" href="#/hex-eth">Ethernet header</a></td><td>type 08 00 = IPv4</td></tr>
-            <tr><td><span class="chip ip1"></span></td><td>14</td><td>Version + header length</td><td>45: 4 = IPv4, 5 × 4 = 20-byte header</td></tr>
-            <tr><td><span class="chip ip2"></span></td><td>15</td><td>Traffic class (DSCP/ECN)</td><td>00 = ordinary traffic</td></tr>
-            <tr><td><span class="chip ip1"></span></td><td>16–17</td><td>Total length</td><td>00 54 = 84 bytes: this header plus the ICMP message</td></tr>
-            <tr><td><span class="chip ip2"></span></td><td>18–19</td><td>Identification</td><td>c6 d3: only used if the packet gets split up</td></tr>
-            <tr><td><span class="chip ip1"></span></td><td>20–21</td><td>Flags + fragment offset</td><td>40 00 = “don’t fragment”, and this isn’t a fragment</td></tr>
-            <tr><td><span class="chip ip2"></span></td><td>22</td><td>Time to live</td><td>40 = 64 hops before a router throws it away</td></tr>
-            <tr><td><span class="chip ip1"></span></td><td>23</td><td>Protocol (<code>Proto</code>)</td><td>01 = ICMP, so <code>icmp.ParseEcho</code> gets the payload</td></tr>
-            <tr><td><span class="chip ip2"></span></td><td>24–25</td><td>Header checksum</td><td>5f d3: covers these 20 bytes only</td></tr>
-            <tr><td><span class="chip ip1"></span></td><td>26–29</td><td>Source IP (<code>Src</code>)</td><td>0a 00 00 01 = 10.0.0.1</td></tr>
-            <tr><td><span class="chip ip2"></span></td><td>30–33</td><td>Destination IP (<code>Dst</code>)</td><td>0a 00 00 02 = 10.0.0.2</td></tr>
-            <tr><td><span class="chip f0"></span></td><td>34–97</td><td><a class="jump" href="#/hex-icmp">ICMP message</a></td><td>echo request — next slide</td></tr>
-          </tbody>
-        </table>
-      </section>
-
-      <section id="hex-icmp">
-        <h2>A real ping: the ICMP message</h2>
-        <p class="code-path">captures/talk-http.jsonl · frame 2 (same ping)</p>
-        <pre class="hexdump"><code class="nohighlight" data-noescape>00000000  <span class="f0">02 00 00 00 00 02 ee ea  f3 0f 57 32 08 00 45 00</span>  |<span class="f0">..........W2..E.</span>|
+      <!-- hexdump:icmp -->
+      <section id="hex-icmp" class="hex-dense">
+        <h2>A real ping, there and back</h2>
+        <p class="code-path">captures/talk-http.jsonl · frames 2 and 3</p>
+        <p class="hexlabel"><strong>Frame 2</strong> · kernel → mytcp · ping asks: “are you there?”</p>
+        <pre class="hexdump tight"><code class="nohighlight" data-noescape>00000000  <span class="f0">02 00 00 00 00 02 ee ea  f3 0f 57 32 08 00 45 00</span>  |<span class="f0">..........W2..E.</span>|
 00000010  <span class="f0">00 54 c6 d3 40 00 40 01  5f d3 0a 00 00 01 0a 00</span>  |<span class="f0">.T..@.@._.......</span>|
 00000020  <span class="f0">00 02</span> <span class="icmp1">08</span> <span class="icmp2">00</span> <span class="icmp1">40 fe</span> <span class="icmp2">00 07</span>  <span class="icmp1">00 01</span> <span class="icmp2">80 39 bc 6a 00 00</span>  |<span class="f0">..</span><span class="icmp1">.</span><span class="icmp2">.</span><span class="icmp1">@.</span><span class="icmp2">..</span><span class="icmp1">..</span><span class="icmp2">.9.j..</span>|
 00000030  <span class="icmp2">00 00 b9 82 02 00 00 00  00 00</span> <span class="icmp1">10 11 12 13 14 15</span>  |<span class="icmp2">..........</span><span class="icmp1">......</span>|
@@ -711,40 +692,56 @@ return s.sendIPv4(srcMAC, pkt.Src, ip4.ProtoICMP, reply.Marshal())</code></pre>
 00000050  <span class="icmp1">26 27 28 29 2a 2b 2c 2d  2e 2f 30 31 32 33 34 35</span>  |<span class="icmp1">&amp;'()*+,-./012345</span>|
 00000060  <span class="icmp1">36 37</span>                                             |<span class="icmp1">67</span>|
 00000062</code></pre>
-        <table class="compact hexlegend">
-          <thead><tr><th></th><th>Bytes</th><th>Field</th><th>Value</th></tr></thead>
+        <p class="hexlabel fragment" data-fragment-index="0"><strong>Frame 3</strong> · mytcp → kernel · our echo reply</p>
+        <pre class="hexdump tight fragment" data-fragment-index="0"><code class="nohighlight" data-noescape>00000000  <span class="f0">ee ea f3 0f 57 32 02 00  00 00 00 02 08 00 45 00</span>  |<span class="f0">....W2........E.</span>|
+00000010  <span class="f0">00 54 00 01 00 00 40 01  66 a6 0a 00 00 02 0a 00</span>  |<span class="f0">.T....@.f.......</span>|
+00000020  <span class="f0">00 01</span> <span class="icmp1">00</span> <span class="icmp2">00</span> <span class="icmp1">48 fe</span> <span class="icmp2">00 07</span>  <span class="icmp1">00 01</span> <span class="icmp2">80 39 bc 6a 00 00</span>  |<span class="f0">..</span><span class="icmp1">.</span><span class="icmp2">.</span><span class="icmp1">H.</span><span class="icmp2">..</span><span class="icmp1">..</span><span class="icmp2">.9.j..</span>|
+00000030  <span class="icmp2">00 00 b9 82 02 00 00 00  00 00</span> <span class="icmp1">10 11 12 13 14 15</span>  |<span class="icmp2">..........</span><span class="icmp1">......</span>|
+00000040  <span class="icmp1">16 17 18 19 1a 1b 1c 1d  1e 1f 20 21 22 23 24 25</span>  |<span class="icmp1">.......... !"#$%</span>|
+00000050  <span class="icmp1">26 27 28 29 2a 2b 2c 2d  2e 2f 30 31 32 33 34 35</span>  |<span class="icmp1">&amp;'()*+,-./012345</span>|
+00000060  <span class="icmp1">36 37</span>                                             |<span class="icmp1">67</span>|
+00000062</code></pre>
+        <table class="compact hexlegend fields2">
+          <thead><tr><th></th><th>Bytes</th><th>Field</th><th>Request (frame 2)</th><th class="fragment" data-fragment-index="0">Reply (frame 3)</th></tr></thead>
           <tbody>
-            <tr><td><span class="chip f0"></span></td><td>0–33</td><td><a class="jump" href="#/hex-ipv4">Ethernet + IPv4 headers</a></td><td>as on the previous slide · proto 01 = ICMP</td></tr>
-            <tr><td><span class="chip icmp1"></span></td><td>34</td><td>Type (<code>Type</code>)</td><td>08 = echo request (a reply is 00)</td></tr>
-            <tr><td><span class="chip icmp2"></span></td><td>35</td><td>Code</td><td>00: echo has no sub-types</td></tr>
-            <tr><td><span class="chip icmp1"></span></td><td>36–37</td><td>Checksum</td><td>40 fe: covers the whole ICMP message</td></tr>
-            <tr><td><span class="chip icmp2"></span></td><td>38–39</td><td>Identifier (<code>ID</code>)</td><td>00 07: which ping process sent it</td></tr>
-            <tr><td><span class="chip icmp1"></span></td><td>40–41</td><td>Sequence number (<code>Seq</code>)</td><td>00 01 = the first ping</td></tr>
-            <tr><td><span class="chip icmp2"></span></td><td>42–57</td><td>Data: send time</td><td>80 39 bc 6a … read <strong>little-endian</strong> = 1790720384 s + 164537 µs = 22:19:44.164537 UTC</td></tr>
-            <tr><td><span class="chip icmp1"></span></td><td>58–97</td><td>Data: filler</td><td>10 11 12 … 37: a counting pattern up to 56 bytes of data</td></tr>
+            <tr><td><span class="chip f0"></span></td><td>0–33</td><td><a class="jump" href="#/hex-ipv4">Ethernet + IPv4 headers</a></td><td>10.0.0.1 → 10.0.0.2 · proto 01 = ICMP</td><td class="fragment" data-fragment-index="0">10.0.0.2 → 10.0.0.1: addresses swapped</td></tr>
+            <tr><td><span class="chip icmp1"></span></td><td>34</td><td>Type (<code>Type</code>)</td><td>08 = echo request</td><td class="fragment" data-fragment-index="0"><strong>00 = echo reply</strong> ← the change that matters</td></tr>
+            <tr><td><span class="chip icmp2"></span></td><td>35</td><td>Code</td><td>00: echo has no sub-types</td><td class="fragment" data-fragment-index="0">same</td></tr>
+            <tr><td><span class="chip icmp1"></span></td><td>36–37</td><td>Checksum</td><td>40 fe: covers the whole ICMP message</td><td class="fragment" data-fragment-index="0">48 fe: redone, because the type changed</td></tr>
+            <tr><td><span class="chip icmp2"></span></td><td>38–39</td><td>Identifier (<code>ID</code>)</td><td>00 07: which ping process sent it</td><td class="fragment" data-fragment-index="0">same, so ping knows the reply is its own</td></tr>
+            <tr><td><span class="chip icmp1"></span></td><td>40–41</td><td>Sequence number (<code>Seq</code>)</td><td>00 01 = the first ping</td><td class="fragment" data-fragment-index="0">same</td></tr>
+            <tr><td><span class="chip icmp2"></span></td><td>42–57</td><td>Data: send time</td><td>80 39 bc 6a …: when ping sent it</td><td class="fragment" data-fragment-index="0">copied back, so ping can time the round trip</td></tr>
+            <tr><td><span class="chip icmp1"></span></td><td>58–97</td><td>Data: filler</td><td>10 11 12 … 37: a counting pattern</td><td class="fragment" data-fragment-index="0">copied back</td></tr>
           </tbody>
         </table>
-        <p class="soft hexnote">Headers are big-endian, but ping writes its send time in the CPU’s own order (little-endian on x86 and ARM), because only ping reads it back. Read big-endian, those 8 bytes would be 9.2 × 10<sup>18</sup> seconds.</p>
+        <p class="soft hexnote fragment" data-fragment-index="1">The reply is the request sent back with its type changed, the addresses swapped and the checksums redone.</p>
+        <aside class="notes">
+          The send time is little-endian: headers are big-endian, but ping writes its own
+          timestamp in the CPU's order because only ping reads it back. 80 39 bc 6a read
+          little-endian is 1790720384 s = 22:19:44 UTC; read big-endian it would be 9.2e18 s.
+        </aside>
       </section>
-      <!-- /hexdump:ping -->
+      <!-- /hexdump:icmp -->
 
+
+      <!-- ========== TCP: A RELIABLE STREAM ========== -->
       <section data-auto-animate>
         <h2 data-id="btitle">Next: the transport layer</h2>
         <div class="layer-board" data-id="board">
           <div class="layer empty" data-id="app"><span class="lbl">APPLICATION</span><span class="val">( )</span></div>
           <div class="layer empty optional" data-id="sec"><span class="lbl">SECURITY <em>optional</em></span><span class="val">( )</span></div>
-          <div class="layer filled" data-id="trn"><span class="lbl">TRANSPORT</span><span class="val">TCP: connect, send, close, resend</span></div>
-          <div class="layer filled" data-id="net"><span class="lbl">NETWORK</span><span class="val">IPv4 + ping (ICMP echo)</span></div>
+          <div class="layer-row"><div class="layer filled" data-id="ctl"><span class="lbl">CONTROL</span><span class="val">ICMP</span></div><div class="layer filled" data-id="trn"><span class="lbl">TRANSPORT</span><span class="val">TCP</span></div></div>
+          <div class="layer filled" data-id="net"><span class="lbl">NETWORK</span><span class="val">IPv4</span></div>
           <div class="layer filled" data-id="lnk"><span class="lbl">LINK</span><span class="val">Ethernet + ARP</span></div>
           <div class="layer filled" data-id="wir"><span class="lbl">WIRE</span><span class="val">Linux TAP device</span></div>
         </div>
-        <p class="soft">Enough TCP to connect, send, receive and close. No congestion control.</p>
+        <p class="soft">TCP sits on IPv4 next to ICMP. It turns lost and reordered packets into a reliable, ordered stream between two programs. Ours connects, sends, receives and closes; no congestion control.</p>
       </section>
 
       <section id="struct-tcp">
         <h2>A TCP segment, as a Go struct</h2>
         <p class="code-path">internal/tcp/segment.go</p>
-        <pre><code class="language-go" data-trim>type Segment struct {
+        <pre><code class="language-go" data-trim data-line-numbers="1-7|9-11">type Segment struct {
     SrcPort, DstPort uint16 // which app on each end (a number 1–65535)
     Seq, Ack         uint32 // "my bytes start at N", "I got yours up to M"
     Flags            uint8  // SYN (open), ACK, FIN (close), RST (abort)
@@ -759,18 +756,28 @@ func (s Segment) Marshal(srcIP, dstIP net.IP) []byte { /* … */ }</code></pre>
       </section>
 
       <section id="tcp-flow">
-        <h2>Three messages, then bytes can flow</h2>
-        <div class="mermaid spread">
+        <h2>Three messages to open, then bytes can flow</h2>
+        <div class="mermaid tcp-life" data-steps data-controls>
+%%{init: {"sequence": {"messageMargin": 20, "height": 40, "actorMargin": 300}}}%%
 sequenceDiagram
-  participant C as Client
+  participant C as curl
   participant S as mytcp
-  C->>S: SYN · seq = 333994598
-  S->>C: SYN+ACK · seq = 1000 · ack = 333994599
-  C->>S: ACK · seq = 333994599 · ack = 1001
-  Note over C,S: connection is open
-  C->>S: a segment carrying the application’s bytes
+  C->>S: SYN · seq 333994598
+  S->>C: SYN+ACK · seq 1000 · ack 333994599
+  C->>S: ACK · ack 1001 · open
+  C->>S: GET / · 72 bytes · seq 333994599
+  S->>C: 200 OK · 233 bytes · seq 1001 · ack 333994671
+  S->>C: FIN · seq 1234 · HTTP/1.0 closes after one reply
+  C->>S: ACK · ack 1234 (= 1001 + 233: got the reply)
+  C->>S: FIN · seq 333994671
+  S->>C: ACK · ack 333994672
+  C->>S: ACK · ack 1235 (got our FIN)
         </div>
-        <p class="fragment soft">Each SYN uses up one sequence number, so the first byte of data is start + 1. Our starting number is fixed at 1000 so the captures are easy to read.</p>
+        <p class="fragment soft">An ack means “I have every byte before this one”. SYN and FIN each count as one.</p>
+        <aside class="notes">
+          Every number is real: captures/talk-http.jsonl frames 4–13, from curl http://10.0.0.2/.
+          Our starting sequence number is fixed at 1000 so the captures are easy to read.
+        </aside>
       </section>
 
       <!-- hexdump:tcp -->
@@ -783,7 +790,7 @@ sequenceDiagram
 00000030  <span class="tcp1">fa f0</span> <span class="tcp2">2f 00</span> <span class="tcp1">00 00</span> <span class="f0">02 04  05 b4 04 02 08 0a a1 a8</span>  |<span class="tcp1">..</span><span class="tcp2">/.</span><span class="tcp1">..</span><span class="f0">..........</span>|
 00000040  <span class="f0">33 3b 00 00 00 00 01 03  03 07</span>                    |<span class="f0">3;........</span>|
 0000004a</code></pre>
-        <table class="compact hexlegend">
+        <table class="compact hexlegend fields">
           <thead><tr><th></th><th>Bytes</th><th>Field</th><th>Value</th></tr></thead>
           <tbody>
             <tr><td><span class="chip f0"></span></td><td>0–33</td><td><a class="jump" href="#/hex-ipv4">Ethernet + IPv4 headers</a></td><td>as in the ping · IPv4 protocol 06 = TCP</td></tr>
@@ -811,7 +818,7 @@ sequenceDiagram
 00000030  <span class="f0">fa f0 2f 00 00 00</span> <span class="tcp1">02 04  05 b4</span> <span class="tcp2">04 02</span> <span class="tcp1">08 0a a1 a8</span>  |<span class="f0">../...</span><span class="tcp1">....</span><span class="tcp2">..</span><span class="tcp1">....</span>|
 00000040  <span class="tcp1">33 3b 00 00 00 00</span> <span class="tcp2">01</span> <span class="tcp1">03  03 07</span>                    |<span class="tcp1">3;....</span><span class="tcp2">.</span><span class="tcp1">...</span>|
 0000004a</code></pre>
-        <table class="compact hexlegend">
+        <table class="compact hexlegend fields">
           <thead><tr><th></th><th>Bytes</th><th>Option</th><th>Bytes on the wire</th></tr></thead>
           <tbody>
             <tr><td><span class="chip f0"></span></td><td>0–53</td><td><a class="jump" href="#/hex-tcp">Ethernet, IPv4, TCP header</a></td><td>the previous slide</td></tr>
@@ -835,14 +842,14 @@ sequenceDiagram
 00000030  <span class="tcp1">fa f0 2f 00 00 00</span> <span class="tcp2">02 04  05 b4 04 02 08 0a a1 a8</span>  |<span class="tcp1">../...</span><span class="tcp2">..........</span>|
 00000040  <span class="tcp2">33 3b 00 00 00 00 01 03  03 07</span>                    |<span class="tcp2">3;........</span>|
 0000004a</code></pre>
-        <p class="hexlabel"><strong>Frame 5</strong> · mytcp → curl · SYN+ACK</p>
-        <pre class="hexdump tight stack3"><code class="nohighlight" data-noescape>00000000  <span class="eth1">ee ea f3 0f 57 32 02 00  00 00 00 02 08 00</span> <span class="ip1">45 00</span>  |<span class="eth1">....W2........</span><span class="ip1">E.</span>|
+        <p class="hexlabel fragment" data-fragment-index="0"><strong>Frame 5</strong> · mytcp → curl · SYN+ACK</p>
+        <pre class="hexdump tight stack3 fragment" data-fragment-index="0"><code class="nohighlight" data-noescape>00000000  <span class="eth1">ee ea f3 0f 57 32 02 00  00 00 00 02 08 00</span> <span class="ip1">45 00</span>  |<span class="eth1">....W2........</span><span class="ip1">E.</span>|
 00000010  <span class="ip1">00 28 00 02 00 00 40 06  66 cc 0a 00 00 02 0a 00</span>  |<span class="ip1">.(....@.f.......</span>|
 00000020  <span class="ip1">00 01</span> <span class="tcp1">00 50 c6 8a</span> <span class="tcp2">00 00  03 e8</span> <span class="tcp1">13 e8 5a 67</span> <span class="tcp2">50 12</span>  |<span class="ip1">..</span><span class="tcp1">.P..</span><span class="tcp2">....</span><span class="tcp1">..Zg</span><span class="tcp2">P.</span>|
 00000030  <span class="tcp1">ff ff 62 be 00 00</span>                                 |<span class="tcp1">..b...</span>|
 00000036</code></pre>
-        <p class="hexlabel"><strong>Frame 6</strong> · curl → mytcp · ACK</p>
-        <pre class="hexdump tight stack3"><code class="nohighlight" data-noescape>00000000  <span class="eth1">02 00 00 00 00 02 ee ea  f3 0f 57 32 08 00</span> <span class="ip1">45 00</span>  |<span class="eth1">..........W2..</span><span class="ip1">E.</span>|
+        <p class="hexlabel fragment" data-fragment-index="1"><strong>Frame 6</strong> · curl → mytcp · ACK</p>
+        <pre class="hexdump tight stack3 fragment" data-fragment-index="1"><code class="nohighlight" data-noescape>00000000  <span class="eth1">02 00 00 00 00 02 ee ea  f3 0f 57 32 08 00</span> <span class="ip1">45 00</span>  |<span class="eth1">..........W2..</span><span class="ip1">E.</span>|
 00000010  <span class="ip1">00 28 56 eb 40 00 40 06  cf e2 0a 00 00 01 0a 00</span>  |<span class="ip1">.(V.@.@.........</span>|
 00000020  <span class="ip1">00 02</span> <span class="tcp1">c6 8a 00 50</span> <span class="tcp2">13 e8  5a 67</span> <span class="tcp1">00 00 03 e9</span> <span class="tcp2">50 10</span>  |<span class="ip1">..</span><span class="tcp1">...P</span><span class="tcp2">..Zg</span><span class="tcp1">....</span><span class="tcp2">P.</span>|
 00000030  <span class="tcp1">fa f0 67 ce 00 00</span>                                 |<span class="tcp1">..g...</span>|
@@ -852,8 +859,8 @@ sequenceDiagram
           <thead><tr><th>Frame</th><th>Direction</th><th><span class="chip tcp2"></span>Length + flags (bytes 46–47)</th><th><span class="chip tcp2"></span>Seq (bytes 38–41)</th><th><span class="chip tcp1"></span>Ack (bytes 42–45)</th></tr></thead>
           <tbody>
             <tr><td>4</td><td>curl → mytcp</td><td>a0 02 · SYN, 40-byte header</td><td>13 e8 5a 66 = 333994598 (curl’s start)</td><td>0</td></tr>
-            <tr><td>5</td><td>mytcp → curl</td><td>50 12 · SYN+ACK, 20-byte header</td><td>00 00 03 e8 = 1000 (ours; fixed so captures read easily)</td><td>333994599 = theirs + 1</td></tr>
-            <tr><td>6</td><td>curl → mytcp</td><td>50 10 · ACK, 20-byte header</td><td>333994599</td><td>00 00 03 e9 = 1001 = ours + 1</td></tr>
+            <tr class="fragment" data-fragment-index="0"><td>5</td><td>mytcp → curl</td><td>50 12 · SYN+ACK, 20-byte header</td><td>00 00 03 e8 = 1000 (ours; fixed so captures read easily)</td><td>333994599 = theirs + 1</td></tr>
+            <tr class="fragment" data-fragment-index="1"><td>6</td><td>curl → mytcp</td><td>50 10 · ACK, 20-byte header</td><td>333994599</td><td>00 00 03 e9 = 1001 = ours + 1</td></tr>
           </tbody>
         </table>
       </section>
@@ -870,7 +877,7 @@ sequenceDiagram
 00000060  <span class="app1">3a 20 63 75 72 6c 2f 37  2e 38 38 2e 31 0d 0a 41</span>  |<span class="app1">: curl/7.88.1..A</span>|
 00000070  <span class="app1">63 63 65 70 74 3a 20 2a  2f 2a 0d 0a 0d 0a</span>        |<span class="app1">ccept: */*....</span>|
 0000007e</code></pre>
-        <table class="compact hexlegend">
+        <table class="compact hexlegend fields">
           <thead><tr><th></th><th>Bytes</th><th>Field</th><th>Value</th></tr></thead>
           <tbody>
             <tr><td><span class="chip eth1"></span></td><td>0–13</td><td><a class="jump" href="#/hex-eth">Ethernet header</a></td><td>same link as the handshake</td></tr>
@@ -886,7 +893,7 @@ sequenceDiagram
       <section>
         <h2>How an app plugs into our TCP</h2>
         <p class="code-path">internal/tcp/app.go</p>
-        <pre><code class="language-go" data-trim>// what our TCP calls when a connection has news
+        <pre><code class="language-go" data-trim data-line-numbers="1-8|10-13">// what our TCP calls when a connection has news
 // (ConnKey = their IP, their port, our port)
 type App interface {
     // bytes arrived: return bytes to send back, and whether to close
@@ -899,26 +906,60 @@ type App interface {
 func (EchoApp) OnData(_ ConnKey, data []byte) ([]byte, bool) {
     return append([]byte(nil), data...), false
 }</code></pre>
-        <p class="fragment soft">The app gets bytes, returns bytes, and says whether to close. Echo is the smallest one; next we put a protocol on top.</p>
+        <p class="fragment soft">The app gets bytes, returns bytes, and says whether to close. Echo is the smallest one. HTTP will be the first real protocol on top.</p>
       </section>
 
+
+      <!-- ========== INTERLUDE: TCP IS A CHOICE ========== -->
+      <section>
+        <h2>AWS replaced TCP underneath: SRD</h2>
+        <p class="lede">Apps still open TCP sockets. Underneath, AWS can carry the traffic with its own protocol.</p>
+        <ul>
+          <li class="fragment"><strong>SRD</strong> (Scalable Reliable Datagram) runs on AWS’s Nitro network card</li>
+          <li class="fragment">Sprays one flow across many network paths</li>
+          <li class="fragment">Resends lost packets within microseconds, in hardware</li>
+          <li class="fragment">Delivers everything, but <strong>out of order</strong>; the layer above puts it back in order</li>
+        </ul>
+        <p class="fragment punch">TCP isn’t mandatory everywhere. Neither is TLS.</p>
+        <aside class="notes">
+          Sources: AWS "A Cloud-Optimized Transport Protocol for Elastic and Scalable HPC"
+          (IEEE Micro 2020); EFA and ENA Express docs. EFA exposes SRD for HPC/ML.
+          ENA Express carries ordinary TCP/UDP flows between instances over SRD.
+        </aside>
+      </section>
+
+      <section>
+        <h2>Where SRD sits under your TCP connection</h2>
+        <pre class="diagram-code"><code class="nohighlight">your app     ── TCP socket          (API unchanged)
+                     │
+Nitro card   ── SRD                 multipath · fast retransmit
+                     │              reliable, out-of-order
+fabric       ── many paths at once
+                     │
+peer Nitro   ── reorder → hand TCP bytes up</code></pre>
+        <p class="fragment soft">With ENA Express, ordinary TCP traffic between instances rides on SRD without the app noticing.
+          Because the layers are separate, AWS could replace the middle and leave both ends alone.</p>
+      </section>
+
+
+      <!-- ========== HTTP: THE APPLICATION ========== -->
       <section data-auto-animate>
         <h2 data-id="btitle">Next: the application</h2>
         <div class="layer-board" data-id="board">
           <div class="layer filled" data-id="app"><span class="lbl">APPLICATION</span><span class="val">HTTP/1: GET and HEAD</span></div>
           <div class="layer empty optional" data-id="sec"><span class="lbl">SECURITY <em>optional</em></span><span class="val">( )</span></div>
-          <div class="layer filled" data-id="trn"><span class="lbl">TRANSPORT</span><span class="val">TCP: connect, send, close, resend</span></div>
-          <div class="layer filled" data-id="net"><span class="lbl">NETWORK</span><span class="val">IPv4 + ping (ICMP echo)</span></div>
+          <div class="layer-row"><div class="layer filled" data-id="ctl"><span class="lbl">CONTROL</span><span class="val">ICMP</span></div><div class="layer filled" data-id="trn"><span class="lbl">TRANSPORT</span><span class="val">TCP</span></div></div>
+          <div class="layer filled" data-id="net"><span class="lbl">NETWORK</span><span class="val">IPv4</span></div>
           <div class="layer filled" data-id="lnk"><span class="lbl">LINK</span><span class="val">Ethernet + ARP</span></div>
           <div class="layer filled" data-id="wir"><span class="lbl">WIRE</span><span class="val">Linux TAP device</span></div>
         </div>
-        <p class="soft"><code>curl</code> gets a web page. TCP only carries ordered bytes; HTTP gives them meaning.</p>
+        <p class="soft">HTTP: the application layer, which gives the stream meaning: a request and a response.</p>
       </section>
 
       <section id="http-parse">
         <h2>HTTP: finding where a request ends</h2>
         <p class="code-path">internal/http1/server.go</p>
-        <pre><code class="language-go" data-trim>// TCP may split one request across segments: keep appending
+        <pre><code class="language-go" data-trim data-line-numbers="1-2|3-7|8-10|11-12">// TCP may split one request across segments: keep appending
 buf := append(s.buf[key], data...)
 // the headers end at the first blank line
 headerEnd := bytes.Index(buf, []byte("\r\n\r\n"))
@@ -934,54 +975,98 @@ return s.response(200, "text/html; charset=utf-8", body), true</code></pre>
       </section>
 
       <!-- hexdump:http -->
-      <section id="hex-http">
+      <section id="hex-http" class="hex-dense">
         <h2>One HTTP request, every layer at once</h2>
-        <p class="code-path">captures/talk-http.jsonl · frame 7 of the same connection, after the handshake</p>
-        <pre class="hexdump"><code class="nohighlight" data-noescape>00000000  <span class="eth1">02 00 00 00 00 02 ee ea  f3 0f 57 32 08 00</span> <span class="ip1">45 00</span>  |<span class="eth1">..........W2..</span><span class="ip1">E.</span>|
-00000010  <span class="ip1">00 70 56 ec 40 00 40 06  cf 99 0a 00 00 01 0a 00</span>  |<span class="ip1">.pV.@.@.........</span>|
-00000020  <span class="ip1">00 02</span> <span class="tcp1">c6 8a 00 50</span> <span class="tcp2">13 e8  5a 67</span> <span class="tcp1">00 00 03 e9</span> <span class="tcp2">50 18</span>  |<span class="ip1">..</span><span class="tcp1">...P</span><span class="tcp2">..Zg</span><span class="tcp1">....</span><span class="tcp2">P.</span>|
-00000030  <span class="tcp1">fa f0</span> <span class="tcp2">91 b1</span> <span class="tcp1">00 00</span> <span class="http1">47 45  54 20 2f 20 48 54 54 50</span>  |<span class="tcp1">..</span><span class="tcp2">..</span><span class="tcp1">..</span><span class="http1">GET / HTTP</span>|
+        <p class="code-path">captures/talk-http.jsonl · frame 7 · curl → mytcp, after the handshake</p>
+        <pre class="hexdump"><code class="nohighlight" data-noescape>00000000  <span class="eth1 fragment peel" data-fragment-index="0">02 00 00 00 00 02 ee ea  f3 0f 57 32 08 00</span> <span class="ip1 fragment peel" data-fragment-index="1">45 00</span>  |<span class="eth1 fragment peel" data-fragment-index="0">..........W2..</span><span class="ip1 fragment peel" data-fragment-index="1">E.</span>|
+00000010  <span class="ip1 fragment peel" data-fragment-index="1">00 70 56 ec 40 00 40 06  cf 99 0a 00 00 01 0a 00</span>  |<span class="ip1 fragment peel" data-fragment-index="1">.pV.@.@.........</span>|
+00000020  <span class="ip1 fragment peel" data-fragment-index="1">00 02</span> <span class="tcp1 fragment peel" data-fragment-index="2">c6 8a 00 50</span> <span class="tcp2 fragment peel" data-fragment-index="2">13 e8  5a 67</span> <span class="tcp1 fragment peel" data-fragment-index="2">00 00 03 e9</span> <span class="tcp2 fragment peel" data-fragment-index="2">50 18</span>  |<span class="ip1 fragment peel" data-fragment-index="1">..</span><span class="tcp1 fragment peel" data-fragment-index="2">...P</span><span class="tcp2 fragment peel" data-fragment-index="2">..Zg</span><span class="tcp1 fragment peel" data-fragment-index="2">....</span><span class="tcp2 fragment peel" data-fragment-index="2">P.</span>|
+00000030  <span class="tcp1 fragment peel" data-fragment-index="2">fa f0</span> <span class="tcp2 fragment peel" data-fragment-index="2">91 b1</span> <span class="tcp1 fragment peel" data-fragment-index="2">00 00</span> <span class="http1">47 45  54 20 2f 20 48 54 54 50</span>  |<span class="tcp1 fragment peel" data-fragment-index="2">..</span><span class="tcp2 fragment peel" data-fragment-index="2">..</span><span class="tcp1 fragment peel" data-fragment-index="2">..</span><span class="http1">GET / HTTP</span>|
 00000040  <span class="http1">2f 31 2e 31 0d 0a 48 6f  73 74 3a 20 31 30 2e 30</span>  |<span class="http1">/1.1..Host: 10.0</span>|
 00000050  <span class="http1">2e 30 2e 32 0d 0a 55 73  65 72 2d 41 67 65 6e 74</span>  |<span class="http1">.0.2..User-Agent</span>|
 00000060  <span class="http1">3a 20 63 75 72 6c 2f 37  2e 38 38 2e 31 0d 0a 41</span>  |<span class="http1">: curl/7.88.1..A</span>|
 00000070  <span class="http1">63 63 65 70 74 3a 20 2a  2f 2a 0d 0a 0d 0a</span>        |<span class="http1">ccept: */*....</span>|
 0000007e</code></pre>
-        <table class="compact hexlegend">
+        <table class="compact hexlegend fields">
           <thead><tr><th></th><th>Bytes</th><th>Field</th><th>Value</th></tr></thead>
           <tbody>
-            <tr><td><span class="chip eth1"></span></td><td>0–13</td><td><a class="jump" href="#/hex-eth">Ethernet header</a></td><td>type 08 00 = IPv4</td></tr>
-            <tr><td><span class="chip ip1"></span></td><td>14–33</td><td><a class="jump" href="#/hex-ipv4">IPv4 header</a></td><td>same fields as the ping · length 00 70 = 112 · protocol 06 = TCP</td></tr>
-            <tr><td><span class="chip tcp1"></span></td><td>34–37</td><td><a class="jump" href="#/struct-tcp">Ports (<code>SrcPort</code> → <code>DstPort</code>)</a></td><td>c6 8a → 00 50 = 50826 → 80, <a class="jump" href="#/hex-tcp">same as the SYN</a></td></tr>
-            <tr><td><span class="chip tcp2"></span></td><td>38–41</td><td><a class="jump" href="#/struct-tcp">Sequence number (<code>Seq</code>)</a></td><td>13 e8 5a 67 = the SYN’s start + 1: the first byte of this payload</td></tr>
-            <tr><td><span class="chip tcp1"></span></td><td>42–45</td><td><a class="jump" href="#/struct-tcp">Acknowledgment (<code>Ack</code>)</a></td><td>00 00 03 e9 = 1001: “got everything before 1001” (we started at 1000)</td></tr>
-            <tr><td><span class="chip tcp2"></span></td><td>46–47</td><td><a class="jump" href="#/struct-tcp">Header length + flags (<code>Flags</code>)</a></td><td>50 18: 5 × 4 = 20-byte header · 0x18 = PSH + ACK</td></tr>
-            <tr><td><span class="chip tcp1"></span></td><td>48–49</td><td><a class="jump" href="#/struct-tcp">Window (<code>Window</code>)</a></td><td>fa f0 = 64240 more bytes curl can take</td></tr>
-            <tr><td><span class="chip tcp2"></span></td><td>50–51</td><td>Checksum</td><td>91 b1: covers TCP header, payload and both IPs</td></tr>
-            <tr><td><span class="chip tcp1"></span></td><td>52–53</td><td>Urgent pointer</td><td>00 00: unused</td></tr>
+            <tr class="fragment semi-fade-out" data-fragment-index="0"><td><span class="chip eth1"></span></td><td>0–13</td><td><a class="jump" href="#/hex-eth">Ethernet header</a></td><td>type 08 00 = IPv4</td></tr>
+            <tr class="fragment semi-fade-out" data-fragment-index="1"><td><span class="chip ip1"></span></td><td>14–33</td><td><a class="jump" href="#/hex-ipv4">IPv4 header</a></td><td>same fields as the ping · length 00 70 = 112 · protocol 06 = TCP</td></tr>
+            <tr class="fragment semi-fade-out" data-fragment-index="2"><td><span class="chip tcp1"></span></td><td>34–37</td><td><a class="jump" href="#/struct-tcp">Ports (<code>SrcPort</code> → <code>DstPort</code>)</a></td><td>c6 8a → 00 50 = 50826 → 80, <a class="jump" href="#/hex-tcp">same as the SYN</a></td></tr>
+            <tr class="fragment semi-fade-out" data-fragment-index="2"><td><span class="chip tcp2"></span></td><td>38–41</td><td><a class="jump" href="#/struct-tcp">Sequence number (<code>Seq</code>)</a></td><td>13 e8 5a 67 = the SYN’s start + 1: the first byte of this payload</td></tr>
+            <tr class="fragment semi-fade-out" data-fragment-index="2"><td><span class="chip tcp1"></span></td><td>42–45</td><td><a class="jump" href="#/struct-tcp">Acknowledgment (<code>Ack</code>)</a></td><td>00 00 03 e9 = 1001: “got everything before 1001” (we started at 1000)</td></tr>
+            <tr class="fragment semi-fade-out" data-fragment-index="2"><td><span class="chip tcp2"></span></td><td>46–47</td><td><a class="jump" href="#/struct-tcp">Header length + flags (<code>Flags</code>)</a></td><td>50 18: 5 × 4 = 20-byte header · 0x18 = PSH + ACK</td></tr>
+            <tr class="fragment semi-fade-out" data-fragment-index="2"><td><span class="chip tcp1"></span></td><td>48–49</td><td><a class="jump" href="#/struct-tcp">Window (<code>Window</code>)</a></td><td>fa f0 = 64240 more bytes curl can take</td></tr>
+            <tr class="fragment semi-fade-out" data-fragment-index="2"><td><span class="chip tcp2"></span></td><td>50–51</td><td>Checksum</td><td>91 b1: covers TCP header, payload and both IPs</td></tr>
+            <tr class="fragment semi-fade-out" data-fragment-index="2"><td><span class="chip tcp1"></span></td><td>52–53</td><td>Urgent pointer</td><td>00 00: unused</td></tr>
             <tr><td><span class="chip http1"></span></td><td>54–125</td><td><a class="jump" href="#/http-parse">Payload (<code>Payload</code>)</a></td><td>72 bytes of HTTP: <code>GET / HTTP/1.1</code>, Host, User-Agent, Accept, blank line</td></tr>
           </tbody>
         </table>
-        <p class="soft hexnote">Same <a class="jump" href="#/hex-handshake">three-way handshake</a> as before. The TCP header is now 20 bytes (no options); the new part is the payload.</p>
+        <p class="soft hexnote fragment" data-fragment-index="3">On the way in, mytcp peels Ethernet, IPv4 and TCP in turn. What’s left, the green part, is all the HTTP code sees.</p>
+      </section>
+
+      <section id="hex-http-200" class="hex-dense">
+        <h2>The response, wrapped on the way out</h2>
+        <p class="code-path">captures/talk-http.jsonl · frame 8 · mytcp → curl · first 153 of 287 bytes</p>
+        <pre class="hexdump"><code class="nohighlight" data-noescape>00000000  <span class="eth1 fragment wrap" data-fragment-index="2">ee ea f3 0f 57 32 02 00  00 00 00 02 08 00</span> <span class="ip1 fragment wrap" data-fragment-index="1">45 00</span>  |<span class="eth1 fragment wrap" data-fragment-index="2">....W2........</span><span class="ip1 fragment wrap" data-fragment-index="1">E.</span>|
+00000010  <span class="ip1 fragment wrap" data-fragment-index="1">01 11 00 03 00 00 40 06  65 e2 0a 00 00 02 0a 00</span>  |<span class="ip1 fragment wrap" data-fragment-index="1">......@.e.......</span>|
+00000020  <span class="ip1 fragment wrap" data-fragment-index="1">00 01</span> <span class="tcp1 fragment wrap" data-fragment-index="0">00 50 c6 8a</span> <span class="tcp2 fragment wrap" data-fragment-index="0">00 00  03 e9</span> <span class="tcp1 fragment wrap" data-fragment-index="0">13 e8 5a af</span> <span class="tcp2 fragment wrap" data-fragment-index="0">50 18</span>  |<span class="ip1 fragment wrap" data-fragment-index="1">..</span><span class="tcp1 fragment wrap" data-fragment-index="0">.P..</span><span class="tcp2 fragment wrap" data-fragment-index="0">....</span><span class="tcp1 fragment wrap" data-fragment-index="0">..Z.</span><span class="tcp2 fragment wrap" data-fragment-index="0">P.</span>|
+00000030  <span class="tcp1 fragment wrap" data-fragment-index="0">ff ff 5c f6 00 00</span> <span class="http1">48 54  54 50 2f 31 2e 30 20 32</span>  |<span class="tcp1 fragment wrap" data-fragment-index="0">..\...</span><span class="http1">HTTP/1.0 2</span>|
+00000040  <span class="http1">30 30 20 4f 4b 0d 0a</span> <span class="http2">43  6f 6e 74 65 6e 74 2d 54</span>  |<span class="http1">00 OK..</span><span class="http2">Content-T</span>|
+00000050  <span class="http2">79 70 65 3a 20 74 65 78  74 2f 68 74 6d 6c 3b 20</span>  |<span class="http2">ype: text/html; </span>|
+00000060  <span class="http2">63 68 61 72 73 65 74 3d  75 74 66 2d 38 0d 0a 43</span>  |<span class="http2">charset=utf-8..C</span>|
+00000070  <span class="http2">6f 6e 74 65 6e 74 2d 4c  65 6e 67 74 68 3a 20 31</span>  |<span class="http2">ontent-Length: 1</span>|
+00000080  <span class="http2">33 34 0d 0a 43 6f 6e 6e  65 63 74 69 6f 6e 3a 20</span>  |<span class="http2">34..Connection: </span>|
+00000090  <span class="http2">63 6c 6f 73 65 0d 0a</span> <span class="http1">0d  0a</span>                       |<span class="http2">close..</span><span class="http1">..</span>|
+00000099</code></pre>
+        <table class="compact hexlegend fields">
+          <thead><tr><th></th><th>Bytes</th><th>Field</th><th>Value</th></tr></thead>
+          <tbody>
+            <tr class="fragment dim-in" data-fragment-index="2"><td><span class="chip eth1"></span></td><td>0–13</td><td><a class="jump" href="#/hex-eth">Ethernet header</a></td><td>to the kernel’s side of tap0, from us · type 08 00 = IPv4</td></tr>
+            <tr class="fragment dim-in" data-fragment-index="1"><td><span class="chip ip1"></span></td><td>14–33</td><td><a class="jump" href="#/hex-ipv4">IPv4 header</a></td><td>10.0.0.2 → 10.0.0.1 · length 01 11 = 273 · protocol 06 = TCP</td></tr>
+            <tr class="fragment dim-in" data-fragment-index="0"><td><span class="chip tcp1"></span></td><td>34–37</td><td><a class="jump" href="#/struct-tcp">Ports (<code>SrcPort</code> → <code>DstPort</code>)</a></td><td>00 50 → c6 8a = 80 → 50826: the request’s ports, swapped</td></tr>
+            <tr class="fragment dim-in" data-fragment-index="0"><td><span class="chip tcp2"></span></td><td>38–41</td><td><a class="jump" href="#/struct-tcp">Sequence number (<code>Seq</code>)</a></td><td>00 00 03 e9 = 1001: our first byte of data (we started at 1000)</td></tr>
+            <tr class="fragment dim-in" data-fragment-index="0"><td><span class="chip tcp1"></span></td><td>42–45</td><td><a class="jump" href="#/struct-tcp">Acknowledgment (<code>Ack</code>)</a></td><td>13 e8 5a af = 333994671 = the GET’s seq + 72: “got all 72 bytes”</td></tr>
+            <tr class="fragment dim-in" data-fragment-index="0"><td><span class="chip tcp2"></span></td><td>46–47</td><td><a class="jump" href="#/struct-tcp">Header length + flags (<code>Flags</code>)</a></td><td>50 18: 20-byte header · PSH + ACK</td></tr>
+            <tr class="fragment dim-in" data-fragment-index="0"><td><span class="chip tcp1"></span></td><td>48–53</td><td>Window, checksum, urgent</td><td>ff ff = 65535 · 5c f6 · 00 00</td></tr>
+            <tr><td><span class="chip http1"></span></td><td>54–70</td><td>Status line</td><td><code>HTTP/1.0 200 OK</code></td></tr>
+            <tr><td><span class="chip http2"></span></td><td>71–150</td><td>Headers</td><td><code>Content-Type</code>, <code>Content-Length: 134</code>, <code>Connection: close</code></td></tr>
+            <tr><td><span class="chip http1"></span></td><td>151–152</td><td>Blank line</td><td>0d 0a: the headers end here</td></tr>
+            <tr><td><span class="chip f0"></span></td><td>153–286</td><td>Body</td><td>134 bytes of HTML, not shown</td></tr>
+          </tbody>
+        </table>
+        <p class="soft hexnote fragment" data-fragment-index="3">The HTTP code returns plain text. TCP, then IPv4, then Ethernet each put a header in front, the same work the kernel did for curl.</p>
       </section>
       <!-- /hexdump:http -->
 
+
+      <!-- ========== TLS: SECURE TRANSPORT, UNDER HTTP ========== -->
       <section data-auto-animate>
         <h2 data-id="btitle">Optional: the security layer</h2>
         <div class="layer-board" data-id="board">
           <div class="layer filled" data-id="app"><span class="lbl">APPLICATION</span><span class="val">HTTP/1: GET and HEAD</span></div>
           <div class="layer filled optional" data-id="sec"><span class="lbl">SECURITY</span><span class="val">TLS 1.2: Go’s library or our own</span></div>
-          <div class="layer filled" data-id="trn"><span class="lbl">TRANSPORT</span><span class="val">TCP: connect, send, close, resend</span></div>
-          <div class="layer filled" data-id="net"><span class="lbl">NETWORK</span><span class="val">IPv4 + ping (ICMP echo)</span></div>
+          <div class="layer-row"><div class="layer filled" data-id="ctl"><span class="lbl">CONTROL</span><span class="val">ICMP</span></div><div class="layer filled" data-id="trn"><span class="lbl">TRANSPORT</span><span class="val">TCP</span></div></div>
+          <div class="layer filled" data-id="net"><span class="lbl">NETWORK</span><span class="val">IPv4</span></div>
           <div class="layer filled" data-id="lnk"><span class="lbl">LINK</span><span class="val">Ethernet + ARP</span></div>
           <div class="layer filled" data-id="wir"><span class="lbl">WIRE</span><span class="val">Linux TAP device</span></div>
         </div>
-        <p class="soft">HTTPS runs on top of the same TCP code, unchanged.</p>
+        <p class="soft">TLS: secure transport. Nobody in between can read or change the bytes. It runs on the same TCP code, unchanged.</p>
+      </section>
+
+      <section>
+        <h2>HTTPS is HTTP plus one optional layer</h2>
+        <pre class="diagram-code"><code class="nohighlight">HTTP  ─┬─ straight on TCP     (-app http)
+       └─ inside TLS on TCP   (-app https or -app https-diy)
+                 ↑
+         the same TCP code underneath</code></pre>
+        <p class="fragment soft">We added HTTPS late in the project, and nothing below TCP had to change.</p>
       </section>
 
       <section>
         <h2>Adding HTTPS without changing the layers below</h2>
         <p class="code-path">internal/https1/diy.go</p>
-        <pre><code class="language-go" data-trim>// runs once for each new TCP connection on port 443
+        <pre><code class="language-go" data-trim data-line-numbers="3-4|5-8|9-11|12-13">// runs once for each new TCP connection on port 443
 func (s *DIYServer) serve(raw *tcp.StreamConn) {
     // wrap the plain TCP stream in our TLS
     tlsConn := mintls.Server(raw, s.cfg)
@@ -998,7 +1083,6 @@ func (s *DIYServer) serve(raw *tcp.StreamConn) {
         <p class="fragment soft">TLS sits between TCP and HTTP. Neither of them had to change.</p>
       </section>
 
-      <!-- ========== TLS DEEP DIVE ========== -->
       <section class="divider" data-background-gradient="linear-gradient(160deg, #0c1218 0%, #1a1420 100%)">
         <p class="section-label">Deep dive</p>
         <h2>Peeling TLS</h2>
@@ -1017,7 +1101,7 @@ func (s *DIYServer) serve(raw *tcp.StreamConn) {
 └──────────┴─────────────┴────────────┴──────────────────────┘
   type: 20 ChangeCipherSpec  21 Alert  22 Handshake  23 AppData</code></pre>
         <p class="code-path">internal/mintls/record.go</p>
-        <pre><code class="language-go" data-trim>// every TLS record starts with a 5-byte header
+        <pre><code class="language-go" data-trim data-line-numbers="1-3|4-6|8-10">// every TLS record starts with a 5-byte header
 hdr := make([]byte, 5)
 io.ReadFull(r, hdr)                      // block until all 5 arrive
 typ  = hdr[0]                            // which kind of TLS message
@@ -1031,7 +1115,7 @@ io.ReadFull(r, payload)                  // ← the next layer's message</code><
 
       <section id="tls-flow">
         <h2>The TLS 1.2 handshake: agreeing on keys</h2>
-        <div class="mermaid">
+        <div class="mermaid tls-life" data-steps data-controls>
 sequenceDiagram
   participant C as Client
   participant S as Server
@@ -1065,7 +1149,7 @@ sequenceDiagram
       <section>
         <h2>Both sides compute a secret without sending it</h2>
         <p class="code-path">internal/mintls/conn.go · Handshake</p>
-        <pre><code class="language-go" data-trim>// a fresh key pair, used for this connection only
+        <pre><code class="language-go" data-trim data-line-numbers="1-2|3-6|7-10|11-12">// a fresh key pair, used for this connection only
 ecdhe, _ := ecdh.P256().GenerateKey(rand.Reader)
 // send our public half, signed with the certificate's key so the
 // client knows it's really us (ch = the parsed ClientHello)
@@ -1083,7 +1167,7 @@ master := masterSecret(preMaster, ch.random, serverRandom)</code></pre>
       <section>
         <h2>Turning one secret into four keys</h2>
         <p class="code-path">internal/mintls/prf.go</p>
-        <pre><code class="language-go" data-trim>// prf12 = TLS 1.2's pseudo-random function: HMAC-SHA256 in a loop,
+        <pre><code class="language-go" data-trim data-line-numbers="1-2|3-7|8-14">// prf12 = TLS 1.2's pseudo-random function: HMAC-SHA256 in a loop,
 // stretching (secret, label, seed) into as many bytes as we ask for
 // step 1: shared secret → 48-byte master secret
 func masterSecret(preMaster, clientRandom, serverRandom []byte) []byte {
@@ -1103,7 +1187,7 @@ func keyBlock(master, clientRandom, serverRandom []byte) (...) {
       <section id="tls-seal">
         <h2>Encrypting a record with AES-GCM</h2>
         <p class="code-path">internal/mintls/record.go · seal (paraphrased)</p>
-        <pre><code class="language-go" data-trim>// ("||" means "followed by")
+        <pre><code class="language-go" data-trim data-line-numbers="2-3|4-5|6-8|9-10">// ("||" means "followed by")
 // the nonce must never repeat under one key; seq counts records 0, 1, 2…
 nonce := fixedIV(4) || seq(8)
 // extra data the tag protects, even though it stays readable
@@ -1129,8 +1213,8 @@ record payload = explicitNonce(8) || ciphertext || tag(16)</code></pre>
 00000060  <span class="http1">3a 20 63 75 72 6c 2f 37  2e 38 38 2e 31 0d 0a 41</span>  |<span class="http1">: curl/7.88.1..A</span>|
 00000070  <span class="http1">63 63 65 70 74 3a 20 2a  2f 2a 0d 0a 0d 0a</span>        |<span class="http1">ccept: */*....</span>|
 0000007e</code></pre>
-        <p class="code-path">curl -k https://10.0.0.2/ through mintls · captures/talk-https-diy.jsonl frame 31</p>
-        <pre class="hexdump tight"><code class="nohighlight" data-noescape>00000000  <span class="eth1">02 00 00 00 00 02 aa 0b  aa 94 e9 f3 08 00</span> <span class="ip1">45 00</span>  |<span class="eth1">..............</span><span class="ip1">E.</span>|
+        <p class="code-path fragment" data-fragment-index="0">curl -k https://10.0.0.2/ through mintls · captures/talk-https-diy.jsonl frame 31</p>
+        <pre class="hexdump tight fragment" data-fragment-index="0"><code class="nohighlight" data-noescape>00000000  <span class="eth1">02 00 00 00 00 02 aa 0b  aa 94 e9 f3 08 00</span> <span class="ip1">45 00</span>  |<span class="eth1">..............</span><span class="ip1">E.</span>|
 00000010  <span class="ip1">00 8d 13 f3 40 00 40 06  12 76 0a 00 00 01 0a 00</span>  |<span class="ip1">....@.@..v......</span>|
 00000020  <span class="ip1">00 02</span> <span class="tcp1">ce 9e 01 bb 6f 3a  1b 39 00 00 06 54 50 18</span>  |<span class="ip1">..</span><span class="tcp1">....o:.9...TP.</span>|
 00000030  <span class="tcp1">f9 5a c9 13 00 00</span> <span class="tls1">17 03  03 00 60</span> <span class="tls2">91 a2 0a d9 8a</span>  |<span class="tcp1">.Z....</span><span class="tls1">....`</span><span class="tls2">.....</span>|
@@ -1142,7 +1226,7 @@ record payload = explicitNonce(8) || ciphertext || tag(16)</code></pre>
 00000090  <span class="tls2">e5 ab d3 8a 80 39 34 71  bf 80 c9</span>                 |<span class="tls2">.....94q...</span>|
 0000009b</code></pre>
         <p class="hexkey"><span class="chip eth1"></span><a class="jump" href="#/hex-eth">Ethernet</a> <span class="chip ip1"></span><a class="jump" href="#/hex-ipv4">IPv4</a> <span class="chip tcp1"></span><a class="jump" href="#/hex-tcp">TCP</a> <span class="chip http1"></span><a class="jump" href="#/hex-http">HTTP</a> (72) <span class="chip tls1"></span><a class="jump" href="#/tls-record">TLS header</a>: 17 = app data, 03 03 = TLS 1.2, 00 60 = 96 <span class="chip tls2"></span><a class="jump" href="#/tls-seal">nonce</a> (8) <span class="chip tls1"></span><a class="jump" href="#/tls-seal">ciphertext</a> (72) <span class="chip tls2"></span><a class="jump" href="#/tls-seal">tag</a> (16)</p>
-        <p class="soft hexnote">Bytes 0–53 have the same layout; only lengths, IDs, ports, sequence numbers, checksums and tap0’s MAC differ. 96 = 8 + 72 + 16: the ciphertext is as long as the plain GET, so encryption hides the content, not the size.</p>
+        <p class="soft hexnote fragment" data-fragment-index="1">Bytes 0–53 have the same layout; only lengths, IDs, ports, sequence numbers, checksums and tap0’s MAC differ. 96 = 8 + 72 + 16: the ciphertext is as long as the plain GET, so encryption hides the content, not the size.</p>
       </section>
       <!-- /hexdump:tls -->
 
@@ -1196,6 +1280,8 @@ record payload = explicitNonce(8) || ciphertext || tag(16)</code></pre>
         <p class="rabbit fragment"><span>Rabbit holes</span> elliptic-curve math · AEAD design · PKI, cert chains, Certificate Transparency · side channels · post-quantum key exchange (hybrid ML-KEM)</p>
       </section>
 
+
+      <!-- ========== DEMO ========== -->
       <section>
         <h2>Every stage ended with a working demo</h2>
         <table class="compact">
@@ -1227,7 +1313,6 @@ record payload = explicitNonce(8) || ciphertext || tag(16)</code></pre>
         </table>
       </section>
 
-      <!-- ========== DEMO ========== -->
       <section class="divider" data-background-gradient="linear-gradient(160deg, #0c1218 0%, #182010 100%)">
         <p class="section-label">Demo</p>
         <h2>From ping to HTTPS, live</h2>
@@ -1259,7 +1344,37 @@ curl -k --tlsv1.2 --tls-max 1.2 https://10.0.0.2/</code></pre>
         </ul>
       </section>
 
-      <!-- ========== CLOSE ========== -->
+
+      <!-- ========== CLOSE: GIANTS AND TAKEAWAYS ========== -->
+      <section class="divider" data-background-gradient="linear-gradient(160deg, #0c1218 0%, #1a1810 100%)">
+        <p class="section-label">Looking back</p>
+        <h2>Standing on giants</h2>
+        <p class="lede">Nothing here was invented alone.</p>
+      </section>
+
+      <section>
+        <h2>Great systems are built by many people</h2>
+        <p class="lede">Every layer we lean on is the sum of decades of shared work.</p>
+        <ul>
+          <li class="fragment">Standards (RFCs) agreed between rival vendors, often after failures</li>
+          <li class="fragment">One web request passes through a NIC, a kernel, a TLS library, curl and a CDN</li>
+          <li class="fragment">Our few thousand lines stand on millions of hours</li>
+        </ul>
+        <p class="fragment note-line">That isn’t a caveat. It’s the point.</p>
+      </section>
+
+      <section>
+        <h2>Good protocols leave room for what comes next</h2>
+        <p class="soft">They didn’t predict the future. They drew clean boundaries that later ideas could plug into.</p>
+        <table class="compact">
+          <thead><tr><th>Design choice</th><th>What it made possible</th></tr></thead>
+          <tr><td>IP only promises best-effort delivery</td><td>Reliability could be added on top (TCP)</td></tr>
+          <tr class="fragment"><td>TCP offers a plain stream of bytes</td><td>New apps never needed changes to IP</td></tr>
+          <tr class="fragment"><td>Every header has a “what’s inside” field</td><td>Each layer can carry many kinds of next layer</td></tr>
+          <tr class="fragment"><td>TLS sits <em>above</em> TCP</td><td>Encryption is optional</td></tr>
+        </table>
+      </section>
+
       <section>
         <h2>What could plug in next</h2>
         <ul>
@@ -1388,6 +1503,36 @@ curl -k --tlsv1.2 --tls-max 1.2 https://10.0.0.2/</code></pre>
         line.setAttribute("stroke-width", "2");
         line.removeAttribute("marker-end");
         line.parentNode.appendChild(head);
+        line.head = head;
+      });
+    }
+
+    // Diagrams marked data-steps reveal one message or note per key press.
+    // Must run before Reveal.initialize, which collects the fragments.
+    document.querySelectorAll(".mermaid[data-steps] svg").forEach(stepDiagram);
+
+    function stepDiagram(svg) {
+      const units = [];
+      const texts = svg.querySelectorAll("text.messageText");
+      svg.querySelectorAll("line[class^=messageLine]").forEach((line, i) => {
+        units.push({ y: Number(line.getAttribute("y1")), line, els: [texts[i], line, line.head] });
+      });
+      const noteTexts = svg.querySelectorAll("text.noteText");
+      svg.querySelectorAll("rect.note").forEach((rect, i) => {
+        units.push({ y: Number(rect.getAttribute("y")), els: [rect, noteTexts[i]] });
+      });
+      units.sort((a, b) => a.y - b.y).forEach((unit, i) => {
+        unit.els.filter(Boolean).forEach((el) => {
+          el.classList.add("fragment");
+          el.setAttribute("data-fragment-index", i);
+        });
+        if (!unit.line) return;
+        // dashed replies keep their dashes and fade in instead of drawing
+        if (unit.line.classList.contains("messageLine0")) {
+          unit.line.setAttribute("pathLength", "1");
+          unit.line.classList.add("draw");
+        }
+        unit.line.head?.classList.add("head");
       });
     }
 
@@ -1403,7 +1548,66 @@ curl -k --tlsv1.2 --tls-max 1.2 https://10.0.0.2/</code></pre>
       margin: 0.06,
       center: false,
       plugins: [RevealNotes, RevealHighlight],
+    }).then(() => {
+      document.querySelectorAll(".mermaid[data-controls]").forEach(addStepControls);
     });
+
+    // Play/pause, reset, and one button per step that jumps straight to it.
+    function addStepControls(box) {
+      const labels = [];
+      box.querySelectorAll("svg text.fragment").forEach((el) => {
+        labels[Number(el.dataset.fragmentIndex)] ??= el.textContent.trim();
+      });
+      const last = labels.length - 1;
+      const bar = document.createElement("div");
+      bar.className = "step-controls";
+      const button = (text, title) => {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.textContent = text;
+        if (title) b.title = title;
+        bar.appendChild(b);
+        return b;
+      };
+      const play = button("▶ Play");
+      const reset = button("↺", "Back to the start");
+      const steps = labels.map((label, i) => button(String(i + 1), label));
+      box.after(bar);
+
+      const slide = box.closest("section");
+      const current = () => Reveal.getIndices().f ?? -1;
+      let timer = null;
+      const stop = () => {
+        clearInterval(timer);
+        timer = null;
+        play.textContent = "▶ Play";
+      };
+      const sync = () => {
+        const f = current();
+        steps.forEach((b, i) => {
+          b.classList.toggle("done", i <= f);
+          b.classList.toggle("now", i === f);
+        });
+      };
+
+      play.addEventListener("click", () => {
+        if (timer) return stop();
+        if (current() >= last) Reveal.navigateFragment(-1);
+        play.textContent = "❚❚ Pause";
+        timer = setInterval(() => {
+          if (current() >= last) return stop();
+          Reveal.navigateFragment(current() + 1);
+        }, 1100);
+      });
+      reset.addEventListener("click", () => { stop(); Reveal.navigateFragment(-1); });
+      steps.forEach((b, i) => b.addEventListener("click", () => { stop(); Reveal.navigateFragment(i); }));
+      // a clicked button keeps focus, and Space would press it again
+      bar.addEventListener("click", (e) => e.target.blur?.());
+
+      ["fragmentshown", "fragmenthidden", "slidechanged"].forEach((ev) => Reveal.on(ev, sync));
+      Reveal.on("slidechanged", (e) => { if (e.currentSlide !== slide) stop(); });
+      sync();
+    }
 
     // Reveal handles "#/id" links without a history entry; push one so the
     // browser's Back button returns to the slide the jump started from.
