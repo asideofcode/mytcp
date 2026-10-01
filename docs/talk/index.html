@@ -1050,33 +1050,62 @@ peer Nitro   ── reorder → hand TCP bytes up</code></pre>
         <p class="soft">HTTP: the application layer, which gives the stream meaning: a request and a response.</p>
       </section>
 
-      <section id="http-parse">
-        <h2>Our own HTTP server on that Listener</h2>
-        <p class="code-path">internal/http1/server.go · <code>-app http</code></p>
-        <pre><code class="language-go" data-trim data-line-numbers="1-5|7-11">func (s *Server) Serve(ln net.Listener) error {
+      <section id="http-parse" class="code-tight">
+        <h2>Our own HTTP server: bytes in, bytes out</h2>
+        <p class="code-path">internal/http1/server.go (trimmed) · <code>-app http</code></p>
+        <pre><code class="language-go" data-trim data-line-numbers="1-3|4-6|7-10|14-17">func (s *Server) ServeConn(c net.Conn) { // from our Listener’s Accept
+    defer c.Close()                       // Close → our FIN
+    req, buf := []byte(nil), make([]byte, 4096)
     for {
-        c, err := ln.Accept()
-        if err != nil { return err }
-        go s.ServeConn(c) // one goroutine per connection
+        n, err := c.Read(buf)             // whatever TCP has so far
+        req = append(req, buf[:n]...)
+        if end := bytes.Index(req, []byte("\r\n\r\n")); end &gt;= 0 {
+            c.Write(s.respond(string(req[:end]))) // headers done: answer
+            return
+        }
+        if err != nil { return }
     }
 }
-
-func (s *Server) ServeConn(c net.Conn) {
-    // read until \r\n\r\n, write the response, close
+func (s *Server) respond(head string) []byte { // "GET / HTTP/1.1\r\nHost: …"
+    if !strings.HasPrefix(head, "GET ") { return s.response(405, …) }
+    return []byte("HTTP/1.0 200 OK\r\nContent-Length: " + strconv.Itoa(len(body)) +
+        "\r\nConnection: close\r\n\r\n" + body)
 }</code></pre>
-        <p class="fragment soft">Same accept loop you would write on a kernel socket. TCP underneath is ours; the HTTP code never hears about segments.</p>
       </section>
 
-      <section id="http-go">
+      <section id="http-go" class="code-tight">
         <h2>Or just hand the Listener to Go</h2>
-        <p class="code-path">cmd/mytcp/main.go · <code>-app http-go</code></p>
-        <pre><code class="language-go" data-trim data-line-numbers="1-2|4-8">ln := stack.TCP().Listen(80) // where Go code would call net.Listen
+        <p class="code-path">internal/http1/server.go · Handler (trimmed) · cmd/mytcp/main.go · <code>-app http-go</code></p>
+        <pre><code class="language-go" data-trim data-line-numbers="1-5|6-8|10-12">page := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+    if r.Method != http.MethodGet &amp;&amp; r.Method != http.MethodHead {
+        http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+        return
+    }
+    w.Header().Set("Content-Type", "text/html; charset=utf-8")
+    w.Header().Set("Connection", "close")
+    io.WriteString(w, body) // Go writes the status line and the rest
+})
 
-// Go’s own HTTP server, unchanged
 srv := &amp;http.Server{Handler: page}
-srv.SetKeepAlivesEnabled(false)
-srv.Serve(ln) // Accept → Read → Write, all through our TCP</code></pre>
-        <p class="fragment soft">curl cannot tell the two apps apart. The proof that the interface is right is that the stdlib works on it.</p>
+srv.SetKeepAlivesEnabled(false)   // like ours: one request per connection
+srv.Serve(stack.TCP().Listen(80)) // Accept, parse, respond, close: all Go</code></pre>
+        <p class="fragment soft">Go parses the request into <code>r</code> and gives us <code>w</code> to answer. curl can’t tell the two servers apart.</p>
+      </section>
+
+      <section id="http-compare">
+        <h2>Our <code>http1</code> vs Go’s <code>net/http</code></h2>
+        <table class="compact">
+          <thead><tr><th></th><th>http1</th><th>net/http</th></tr></thead>
+          <tbody>
+            <tr class="fragment"><td>Parses</td><td>the request line only</td><td>request line, headers, body, chunked</td></tr>
+            <tr class="fragment"><td>Per connection</td><td>one request, then FIN</td><td>keep-alive: many requests</td></tr>
+            <tr class="fragment"><td>Limits</td><td>64 KiB of headers</td><td>timeouts, header size, body size</td></tr>
+            <tr class="fragment"><td>You write</td><td>the bytes on the wire</td><td>a Handler, given <code>w</code> and <code>r</code></td></tr>
+            <tr class="fragment"><td>Size</td><td>~210 lines</td><td>~29,000 lines (client and server)</td></tr>
+            <tr class="fragment em-row"><td>Runs on</td><td><code>net.Listener</code></td><td><code>net.Listener</code></td></tr>
+          </tbody>
+        </table>
+        <p class="fragment soft">Ours shows what HTTP/1 is: text on a stream. Go’s is the one you’d ship.</p>
       </section>
 
       <!-- hexdump:http -->
