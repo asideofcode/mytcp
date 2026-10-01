@@ -55,6 +55,7 @@ curl http://10.0.0.2/
 # http-go:  /tmp/mytcp -i tap0 -app http-go -dump=false   # Go’s net/http.Server
 # https:    /tmp/mytcp -i tap0 -app https -dump=false
 #           curl -k https://10.0.0.2/
+# https-go: /tmp/mytcp -i tap0 -app https-go -dump=false  # tls.NewListener + net/http.Server
 # https-diy:/tmp/mytcp -i tap0 -app https-diy -dump=false
 #           curl -k --tlsv1.2 --tls-max 1.2 https://10.0.0.2/
 # echo mode:  /tmp/mytcp -i tap0 -app echo -tcp 7
@@ -106,7 +107,7 @@ go build -o /tmp/mytcp ./cmd/mytcp
 | `-host` | `10.0.0.1/24` | Kernel-side addr on TAP (`""` skips) |
 | `-mac` | `02:00:00:00:00:02` | MAC we claim |
 | `-tcp` | `0` → 80/443/7 | Listen port (`http`/`http-go`→80, `https*`→443, `echo`→7) |
-| `-app` | `http` | `http`, `http-go`, `https`, `https-diy`, or `echo` |
+| `-app` | `http` | `http`, `http-go`, `https`, `https-go`, `https-diy`, or `echo` |
 | `-dump` | `true` | Layered onion decode + hex per header |
 | `-dump-only` | `false` | No protocol replies |
 | `-pcap` | `captures/latest` | Capture stem (`.jsonl` + `.pcap`); `""` off |

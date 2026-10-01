@@ -35,18 +35,15 @@ type NetIF interface {
 	Name() string
 }
 
-// Config holds the identity we claim on the wire and the application
-// that sits on top of TCP.
+// Config holds the identity we claim on the wire and how much to record.
+// Applications open TCP ports afterwards with TCP().Listen.
 type Config struct {
-	MAC       net.HardwareAddr  // our Ethernet address; frames to any other unicast MAC are dropped
-	IP        net.IP            // our IPv4 address; ARP and IPv4 only answer for this one
-	ListenTCP uint16            // TCP port to accept connections on; 0 = none
-	App       tcp.App           // byte-callback app above TCP; nil → echo (ignored when Acceptor set)
-	Acceptor  tcp.Acceptor      // optional stream accept (TLS); overrides App data path
-	Dump      bool              // print every RX and TX frame as a layered decode
-	DumpOut   io.Writer         // where Dump output goes; nil disables dumping
-	Capture   *capture.Recorder // optional disk capture
-	Logger    *log.Logger
+	MAC     net.HardwareAddr  // our Ethernet address; frames to any other unicast MAC are dropped
+	IP      net.IP            // our IPv4 address; ARP and IPv4 only answer for this one
+	Dump    bool              // print every RX and TX frame as a layered decode
+	DumpOut io.Writer         // where Dump output goes; nil disables dumping
+	Capture *capture.Recorder // optional disk capture
+	Logger  *log.Logger
 }
 
 // Stack is the userspace L2–L4 handler. It owns the TCP layer and is also
@@ -67,34 +64,21 @@ type Stack struct {
 	wireMu sync.Mutex    // held while dumping a frame or writing one to the NIC
 }
 
-// New builds a Stack on top of nif and starts listening on cfg.ListenTCP
-// if it is set.
+// New builds a Stack on top of nif. No TCP port is open yet.
 func New(nif NetIF, cfg Config) *Stack {
 	logger := cfg.Logger
 	if logger == nil {
 		logger = log.Default()
 	}
-	// Stream apps (TLS) read bytes through a net.Conn instead of the App
-	// callback, so the callback path gets a placeholder that does nothing.
-	app := cfg.App
-	if cfg.Acceptor != nil && app == nil {
-		app = tcp.NopApp{}
-	}
 	// The TCP layer gets s as its Emitter: when TCP wants to send a
 	// segment, it calls s.SendTCP, which wraps it in IPv4 and Ethernet.
 	s := &Stack{cfg: cfg, nif: nif, log: logger}
-	s.tcp = tcp.NewStack(cfg.IP, s, logger, app)
-	if cfg.Acceptor != nil {
-		s.tcp.SetAcceptor(cfg.Acceptor)
-	}
-	if cfg.ListenTCP != 0 {
-		s.tcp.Listen(cfg.ListenTCP)
-	}
+	s.tcp = tcp.NewStack(cfg.IP, s, logger)
 	return s
 }
 
-// TCP returns the userspace TCP layer. Callers that want a net.Listener
-// (hand-rolled HTTP, net/http.Server, …) use TCP().NewListener(port).
+// TCP returns the userspace TCP layer. Apps get a net.Listener from
+// TCP().Listen(port).
 func (s *Stack) TCP() *tcp.Stack { return s.tcp }
 
 // SendTCP implements tcp.Emitter. It serializes seg (the TCP checksum needs
@@ -162,7 +146,7 @@ func (s *Stack) Tick() { s.tcp.Tick() }
 //	     └─ 0x0800 IPv4  → handleIPv4
 //	         └─ Protocol (byte 9 of the IPv4 header)
 //	             ├─ 1 ICMP → handleICMP: answer ping
-//	             └─ 6 TCP  → tcp.Stack.Handle → App or Acceptor
+//	             └─ 6 TCP  → tcp.Stack.Handle → StreamConn → Listener
 //
 // Anything else is logged and dropped. Parse errors are returned to the
 // caller, which logs them; they never stop the stack.

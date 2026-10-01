@@ -83,7 +83,8 @@ after RTO (500ms), up to 5 tries. Pure ACKs are not queued.
 
 ## Stage 6 — HTTP/1 on TCP *(done)*
 
-TCP gained an `App` callback (`OnData` / `OnClose`). Default `-app http`
+Apps reach TCP through `Stack.Listen(port)`, a `net.Listener` whose
+`Accept` returns a `net.Conn` (`StreamConn`). Default `-app http`
 listens on `:80`, buffers to `\r\n\r\n`, answers GET/HEAD, then FINs
 (`Connection: close`). `-app echo` keeps Stage 4 behaviour on `:7`.
 

@@ -13,9 +13,9 @@ var (
 	_ net.Listener = (*Listener)(nil)
 )
 
-// Listener is a net.Listener backed by this userspace TCP stack. It is the
-// pull side of the Acceptor push: each ESTABLISHED connection is handed to
-// OnAccept, which parks it on a channel until Accept takes it.
+// Listener is a net.Listener for one port on this userspace TCP stack.
+// The stack pushes each connection that reaches ESTABLISHED; Accept pulls
+// them off a channel, one per call.
 type Listener struct {
 	stack *Stack
 	port  uint16
@@ -26,11 +26,10 @@ type Listener struct {
 	once sync.Once
 }
 
-// NewListener opens port for incoming connections and returns a Listener
-// that Accept will block on. It sets the stack's Acceptor, so App.OnData
-// is no longer called for data on this stack; use NopApp when constructing
-// the stack. Call it before traffic arrives.
-func (s *Stack) NewListener(port uint16) *Listener {
+// Listen opens port for incoming connections and returns its Listener.
+// SYNs to ports nobody listens on are answered with RST. Listening twice
+// on the same port replaces the earlier Listener.
+func (s *Stack) Listen(port uint16) *Listener {
 	ln := &Listener{
 		stack: s,
 		port:  port,
@@ -38,14 +37,17 @@ func (s *Stack) NewListener(port uint16) *Listener {
 		ch:    make(chan *StreamConn),
 		done:  make(chan struct{}),
 	}
-	s.SetAcceptor(ln)
-	s.Listen(port)
+	s.mu.Lock()
+	s.listen[port] = ln
+	s.mu.Unlock()
+	s.log.Printf("tcp: LISTEN :%d", port)
 	return ln
 }
 
-// OnAccept implements Acceptor. The stack already calls it on a new
-// goroutine, so blocking on the channel does not stall other traffic.
-func (l *Listener) OnAccept(c *StreamConn) {
+// push hands a new connection to Accept. Handle calls it on its own
+// goroutine, so blocking here until someone Accepts does not stall
+// other traffic.
+func (l *Listener) push(c *StreamConn) {
 	select {
 	case l.ch <- c:
 	case <-l.done:
@@ -64,10 +66,18 @@ func (l *Listener) Accept() (net.Conn, error) {
 	}
 }
 
-// Close stops accepting. In-flight Accept calls return net.ErrClosed.
-// Connections already handed out are not closed.
+// Close stops accepting and frees the port, so new SYNs get RST.
+// In-flight Accept calls return net.ErrClosed. Connections already handed
+// out are not closed.
 func (l *Listener) Close() error {
-	l.once.Do(func() { close(l.done) })
+	l.once.Do(func() {
+		close(l.done)
+		l.stack.mu.Lock()
+		if l.stack.listen[l.port] == l {
+			delete(l.stack.listen, l.port)
+		}
+		l.stack.mu.Unlock()
+	})
 	return nil
 }
 

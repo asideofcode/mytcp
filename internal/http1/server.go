@@ -3,12 +3,10 @@
 // Mental model: TCP delivers a byte stream; HTTP is just parsing that stream
 // for a request ending in \r\n\r\n, then writing a response and closing.
 //
-// The preferred way in is Serve / ServeConn on a net.Listener / net.Conn —
-// the same interface a kernel socket exposes. OnData / OnClose remain so
-// the HTTPS wrappers can feed decrypted bytes through the same request
-// logic. It deliberately leaves out keep-alive, request bodies, chunked
-// encoding, header parsing beyond the request line, and routing: every
-// path gets the same page.
+// It runs on any net.Listener / net.Conn: our TCP's Listener, a TLS conn
+// on top of it, or a kernel socket. It deliberately leaves out keep-alive,
+// request bodies, chunked encoding, header parsing beyond the request line,
+// and routing: every path gets the same page.
 package http1
 
 import (
@@ -20,9 +18,6 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"sync"
-
-	"github.com/asideofcode/mytcp/internal/tcp"
 )
 
 // maxBuf caps how many bytes we buffer per connection while waiting for
@@ -30,16 +25,8 @@ import (
 // \r\n\r\n could make us buffer forever.
 const maxBuf = 64 << 10
 
-// Server serves the same tiny page either through Serve / ServeConn on a
-// net.Listener, or through OnData / OnClose when driven by the HTTPS
-// wrappers. It keeps one partial-request buffer per connection, because a
-// request may arrive spread over several TCP segments.
-//
-// The HTTPS path drives OnData from one goroutine per connection, so mu
-// guards buf.
+// Server serves the same tiny page on every connection it is given.
 type Server struct {
-	mu   sync.Mutex
-	buf  map[tcp.ConnKey][]byte // bytes received so far, per connection, until headers are complete
 	log  *log.Logger
 	Body string // response body; default greeting if empty
 }
@@ -50,10 +37,7 @@ func New(logger *log.Logger) *Server {
 	if logger == nil {
 		logger = log.Default()
 	}
-	return &Server{
-		buf: make(map[tcp.ConnKey][]byte),
-		log: logger,
-	}
+	return &Server{log: logger}
 }
 
 // Serve accepts connections on ln and handles each in its own goroutine.
@@ -70,31 +54,65 @@ func (s *Server) Serve(ln net.Listener) error {
 
 // ServeConn reads one HTTP request from c, writes the response, and closes.
 // It is what Go's net/http does per connection, only smaller.
+//
+// TCP is a byte stream, not a message stream. One request can arrive in
+// several Reads, and segment boundaries mean nothing to HTTP. So bytes
+// are appended to a buffer until the blank line that ends the header
+// section (\r\n\r\n, RFC 9112 Section 2.1) shows up. Anything after it
+// (a body, a pipelined request) is ignored; that is safe only because
+// every response closes the connection.
 func (s *Server) ServeConn(c net.Conn) {
 	defer c.Close()
-	key := connKey(c)
+	var req []byte
 	buf := make([]byte, 4096)
 	for {
 		n, err := c.Read(buf)
-		if n > 0 {
-			reply, done := s.OnData(key, buf[:n])
-			if len(reply) > 0 {
-				if _, werr := c.Write(reply); werr != nil {
-					s.OnClose(key)
-					return
-				}
-			}
-			if done {
-				return
-			}
+		req = append(req, buf[:n]...)
+		if end := bytes.Index(req, []byte("\r\n\r\n")); end >= 0 {
+			_, _ = c.Write(s.respond(c.RemoteAddr(), string(req[:end])))
+			return
+		}
+		if len(req) > maxBuf {
+			s.log.Printf("http: %v request too large — 413", c.RemoteAddr())
+			_, _ = c.Write(s.response(413, "text/plain", "request too large\n"))
+			return
 		}
 		if err != nil {
 			if err != io.EOF {
-				s.log.Printf("http: %v read: %v", key, err)
+				s.log.Printf("http: %v read: %v", c.RemoteAddr(), err)
 			}
-			s.OnClose(key)
 			return
 		}
+	}
+}
+
+// respond builds the reply to a request whose header section is head
+// (everything before the blank line).
+func (s *Server) respond(from net.Addr, head string) []byte {
+	// The first line is the request line: "METHOD target HTTP/x.y"
+	// (RFC 9112 Section 3). Only the method and target are used; the
+	// version and all header fields are ignored.
+	line, _, _ := strings.Cut(head, "\r\n")
+	parts := strings.Fields(line)
+	if len(parts) < 2 {
+		s.log.Printf("http: %v bad request-line %q", from, line)
+		return s.response(400, "text/plain", "bad request\n")
+	}
+	method, path := parts[0], parts[1]
+	s.log.Printf("http: %v %s %s", from, method, path)
+
+	// Only GET and HEAD are supported, and the path does not matter.
+	switch method {
+	case "GET", "HEAD":
+		body := s.body()
+		// HEAD gets the same headers as GET, including the Content-Length
+		// GET would have had, but no body (RFC 9110 Section 9.3.2).
+		if method == "HEAD" {
+			return s.responseHead(200, "text/html; charset=utf-8", len(body))
+		}
+		return s.response(200, "text/html; charset=utf-8", body)
+	default:
+		return s.response(405, "text/plain", "method not allowed\n")
 	}
 }
 
@@ -118,86 +136,6 @@ func (s *Server) Handler() http.Handler {
 			http.Error(w, "method not allowed\n", http.StatusMethodNotAllowed)
 		}
 	})
-}
-
-// connKey builds the ConnKey OnData uses from a net.Conn's addresses.
-func connKey(c net.Conn) tcp.ConnKey {
-	key := tcp.ConnKey{}
-	if a, ok := c.RemoteAddr().(*net.TCPAddr); ok {
-		key.RemoteIP = a.IP.String()
-		key.RemotePort = uint16(a.Port)
-	}
-	if a, ok := c.LocalAddr().(*net.TCPAddr); ok {
-		key.LocalPort = uint16(a.Port)
-	}
-	return key
-}
-
-// OnData is called with each chunk of in-order bytes TCP receives on the
-// connection identified by key. It returns the response to send, if a full
-// request has arrived, and whether TCP should close the connection after it.
-//
-// TCP is a byte stream, not a message stream. One request can arrive in
-// several segments, and segment boundaries mean nothing to HTTP. So bytes
-// are appended to a per-connection buffer until the blank line that ends
-// the header section (\r\n\r\n, RFC 9112 Section 2.1) shows up.
-func (s *Server) OnData(key tcp.ConnKey, data []byte) (reply []byte, closeAfter bool) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	buf := append(s.buf[key], data...)
-	if len(buf) > maxBuf {
-		s.log.Printf("http: %v request too large — 413", key)
-		delete(s.buf, key)
-		return s.response(413, "text/plain", "request too large\n"), true
-	}
-	s.buf[key] = buf
-
-	headerEnd := bytes.Index(buf, []byte("\r\n\r\n"))
-	if headerEnd < 0 {
-		// Incomplete request; TCP already ACKs — wait for more.
-		return nil, false
-	}
-
-	// Headers are complete. The buffer is dropped here, so any bytes after
-	// the blank line (a body, or a second pipelined request) are discarded.
-	// That is safe only because every response closes the connection.
-	head := string(buf[:headerEnd])
-	delete(s.buf, key)
-
-	// The first line is the request line: "METHOD target HTTP/x.y"
-	// (RFC 9112 Section 3). Only the method and target are used; the
-	// version and all header fields are ignored.
-	line, _, _ := strings.Cut(head, "\r\n")
-	parts := strings.Fields(line)
-	if len(parts) < 2 {
-		s.log.Printf("http: %v bad request-line %q", key, line)
-		return s.response(400, "text/plain", "bad request\n"), true
-	}
-	method, path := parts[0], parts[1]
-	s.log.Printf("http: %v %s %s", key, method, path)
-
-	// Only GET and HEAD are supported, and the path does not matter.
-	switch method {
-	case "GET", "HEAD":
-		body := s.body()
-		// HEAD gets the same headers as GET, including the Content-Length
-		// GET would have had, but no body (RFC 9110 Section 9.3.2).
-		if method == "HEAD" {
-			return s.responseHead(200, "text/html; charset=utf-8", len(body)), true
-		}
-		return s.response(200, "text/html; charset=utf-8", body), true
-	default:
-		return s.response(405, "text/plain", "method not allowed\n"), true
-	}
-}
-
-// OnClose is called by TCP when the connection is gone. It forgets any
-// half-received request so the buffer map does not leak.
-func (s *Server) OnClose(key tcp.ConnKey) {
-	s.mu.Lock()
-	delete(s.buf, key)
-	s.mu.Unlock()
 }
 
 // body returns the page served for every GET: Body if set, otherwise a

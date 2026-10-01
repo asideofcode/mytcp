@@ -10,8 +10,8 @@ import (
 
 func TestListenerAccept(t *testing.T) {
 	em := &fakeEmit{}
-	s := NewStack(net.IPv4(10, 0, 0, 2), em, log.New(io.Discard, "", 0), NopApp{})
-	ln := s.NewListener(80)
+	s := NewStack(net.IPv4(10, 0, 0, 2), em, log.New(io.Discard, "", 0))
+	ln := s.Listen(80)
 
 	peerMAC := net.HardwareAddr{0x02, 0, 0, 0, 0, 1}
 	peerIP := net.IPv4(10, 0, 0, 1)
@@ -58,5 +58,15 @@ func TestListenerAccept(t *testing.T) {
 	_ = ln.Close()
 	if _, err := ln.Accept(); err != net.ErrClosed {
 		t.Fatalf("Accept after Close: %v", err)
+	}
+
+	// A closed Listener frees its port: the next SYN is refused.
+	if err := s.Handle(peerMAC, peerIP, Segment{
+		SrcPort: 50001, DstPort: 80, Seq: 1, Flags: FlagSYN, Window: 65535,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !em.last.Has(FlagRST) {
+		t.Fatalf("SYN after Close got %s, want RST", FlagsString(em.last.Flags))
 	}
 }

@@ -7,6 +7,7 @@ import (
 	"net"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/asideofcode/mytcp/internal/arp"
 	"github.com/asideofcode/mytcp/internal/eth"
@@ -56,12 +57,22 @@ func testStack(t *testing.T) (*stack.Stack, *memIF) {
 	t.Helper()
 	nif := &memIF{name: "test0"}
 	st := stack.New(nif, stack.Config{
-		MAC:       net.HardwareAddr{0x02, 0, 0, 0, 0, 2},
-		IP:        net.IPv4(10, 0, 0, 2),
-		ListenTCP: 7,
-		Dump:      false,
-		Logger:    log.New(io.Discard, "", 0),
+		MAC:    net.HardwareAddr{0x02, 0, 0, 0, 0, 2},
+		IP:     net.IPv4(10, 0, 0, 2),
+		Logger: log.New(io.Discard, "", 0),
 	})
+	// Echo on port 7, the way cmd/mytcp -app echo runs it.
+	ln := st.TCP().Listen(7)
+	t.Cleanup(func() { ln.Close() })
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			go func() { defer c.Close(); _, _ = io.Copy(c, c) }()
+		}
+	}()
 	return st, nif
 }
 
@@ -194,14 +205,23 @@ func TestTCPHandshakeAndEcho(t *testing.T) {
 		Flags: tcp.FlagACK, Window: 65535,
 	})
 
-	// Data
-	nif.tx = nil
+	// Data. The stack ACKs at once; the echo comes back from the app's
+	// goroutine a moment later.
 	payload := []byte("hello")
 	sendTCP(tcp.Segment{
 		SrcPort: 40000, DstPort: 7, Seq: 501, Ack: synAck.Seq + 1,
 		Flags: tcp.FlagACK | tcp.FlagPSH, Window: 65535, Payload: payload,
 	})
-	echo := readTCP()
+	var echo tcp.Segment
+	for deadline := time.Now().Add(time.Second); ; {
+		if echo = readTCP(); len(echo.Payload) > 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("no echo")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
 	if !bytes.Equal(echo.Payload, payload) {
 		t.Fatalf("echo %q", echo.Payload)
 	}

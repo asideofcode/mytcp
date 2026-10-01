@@ -9,18 +9,17 @@ import (
 	"time"
 )
 
-type streamAcceptor struct {
-	ch chan *StreamConn
-}
-
-func (a *streamAcceptor) OnAccept(c *StreamConn) { a.ch <- c }
-
 func TestStreamConnEcho(t *testing.T) {
 	em := &fakeEmit{}
-	s := NewStack(net.IPv4(10, 0, 0, 2), em, log.New(io.Discard, "", 0), NopApp{})
-	acc := &streamAcceptor{ch: make(chan *StreamConn, 1)}
-	s.SetAcceptor(acc)
-	s.Listen(443)
+	s := NewStack(net.IPv4(10, 0, 0, 2), em, log.New(io.Discard, "", 0))
+	ln := s.Listen(443)
+	accepted := make(chan net.Conn, 1)
+	go func() {
+		c, err := ln.Accept()
+		if err == nil {
+			accepted <- c
+		}
+	}()
 
 	peerMAC := net.HardwareAddr{0x02, 0, 0, 0, 0, 1}
 	peerIP := net.IPv4(10, 0, 0, 1)
@@ -36,9 +35,9 @@ func TestStreamConnEcho(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var sc *StreamConn
+	var sc net.Conn
 	select {
-	case sc = <-acc.ch:
+	case sc = <-accepted:
 	case <-time.After(time.Second):
 		t.Fatal("no accept")
 	}

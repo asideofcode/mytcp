@@ -146,7 +146,7 @@ html.reveal-full-page,
   color: var(--accent);
 }
 
-.reveal code + code {
+.reveal :not(pre) > code + code {
   margin-left: 0.35em;
 }
 
@@ -224,6 +224,7 @@ html.reveal-full-page,
 .reveal pre.code-wrapper code.hljs.fragment {
   position: absolute;
   inset: 0;
+  margin: 0;
   padding: inherit;
   border-radius: inherit;
   background: #12181c;
@@ -854,4 +855,11 @@ html.reveal-full-page,
 .reveal .slides section.code-tight pre {
   font-size: 0.52em;
   margin-bottom: 0.4em;
+}
+
+/* the row a comparison table is building up to */
+.reveal table tr.em-row td {
+  color: var(--accent);
+  font-weight: 600;
+  border-top: 2px solid var(--accent);
 }

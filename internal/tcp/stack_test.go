@@ -9,17 +9,19 @@ import (
 )
 
 type fakeEmit struct {
-	n int
+	n    int
+	last Segment
 }
 
 func (f *fakeEmit) SendTCP(dstMAC net.HardwareAddr, dstIP net.IP, seg Segment) error {
 	f.n++
+	f.last = seg
 	return nil
 }
 
 func TestRetransmitTick(t *testing.T) {
 	em := &fakeEmit{}
-	s := NewStack(net.IPv4(10, 0, 0, 2), em, log.New(io.Discard, "", 0), nil)
+	s := NewStack(net.IPv4(10, 0, 0, 2), em, log.New(io.Discard, "", 0))
 	s.rto = 50 * time.Millisecond
 	now := time.Unix(0, 0)
 	s.now = func() time.Time { return now }

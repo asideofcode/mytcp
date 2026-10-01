@@ -101,7 +101,7 @@ In this repo that shows up concretely:
 ```text
 HTTP  ──┬── our server on net.Listener      (-app http)
         ├── net/http.Server on same Listener (-app http-go)
-        └── TLS, then HTTP                   (-app https | https-diy)
+        └── TLS, then HTTP                   (-app https | https-go | https-diy)
                ↑
           same TCP / StreamConn below
 ```
@@ -182,10 +182,9 @@ A few things sit beside the peel-and-wrap habit:
 
 - **TAP device** — `Read`/`Write` of frames. That is the wire handle,
   not a protocol header.
-- **`tcp.Listener` / `StreamConn`** — `net.Listener` / `net.Conn` over userspace TCP
-- **`tcp.App` / `Acceptor`** — callback echo path; push accept for TLS
-  adapters *above* segments. They consume the onion’s top payload as a
-  byte stream.
+- **`tcp.Listener` / `StreamConn`** — `net.Listener` / `net.Conn` over
+  userspace TCP: adapters *above* segments. They consume the onion’s top
+  payload as a byte stream.
 - **`stack` demux** — glue that calls `eth.Parse`, switches on type,
   calls the next `Parse`. The onion lives in the protocols; the stack
   is the peeler.

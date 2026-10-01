@@ -46,6 +46,16 @@ kill $pid
 wait $pid 2>/dev/null || true
 sleep 0.2
 
+# --- HTTPS all stdlib (tls.NewListener + net/http.Server on our Listener) ---
+/tmp/mytcp -i tap0 -app https-go -dump=false >/tmp/mytcp.log 2>&1 &
+pid=$!
+sleep 0.5
+curl -kfsS --max-time 5 https://10.0.0.2/ | grep -q mytcp
+echo "https-go smoke ok"
+kill $pid
+wait $pid 2>/dev/null || true
+sleep 0.2
+
 # --- HTTPS DIY (mintls TLS 1.2) ---
 /tmp/mytcp -i tap0 -app https-diy -dump=false >/tmp/mytcp.log 2>&1 &
 pid=$!

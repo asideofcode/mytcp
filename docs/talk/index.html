@@ -924,6 +924,43 @@ Listener    one per port: Accept returns the next StreamConn  listener.go</code>
         <p class="fragment soft">Segments carry bytes; <code>Conn</code> puts them in order; <code>StreamConn</code> lets an app read them; <code>Listener</code> is how the app gets one. Going out, it runs the other way: <code>Write</code> → <code>Conn</code> → new <code>Segment</code>s.</p>
       </section>
 
+      <section id="struct-conn" class="code-tight">
+        <h2>One connection’s state: <code>Conn</code></h2>
+        <p class="code-path">internal/tcp/stack.go</p>
+        <pre><code class="language-go" data-trim data-line-numbers="1-4|6-9|10-11|12">type Stack struct {
+    listen map[uint16]struct{} // ports in LISTEN
+    conns  map[fourTuple]*Conn // (their IP, their port, our port) → Conn
+}
+
+type Conn struct {
+    tuple          fourTuple
+    state          State         // SYN_RECEIVED, ESTABLISHED, FIN_WAIT_1, …
+    rcvNxt         uint32        // next seq we expect; goes in our Ack field
+    sndUna, sndNxt uint32        // oldest unacked byte; next byte we send
+    outq           []outstanding // sent Segments waiting for an ACK
+    stream         *StreamConn   // the app's view; set at ESTABLISHED
+}</code></pre>
+        <p class="fragment soft">RFC 9293 calls this the Transmission Control Block. The app never touches it.</p>
+      </section>
+
+      <section id="conn-handle" class="code-tight">
+        <h2>Every <code>Segment</code> goes through its <code>Conn</code></h2>
+        <p class="code-path">internal/tcp/stack.go</p>
+        <pre><code class="language-go" data-trim data-line-numbers="1-3|4-8|9-10">func (s *Stack) Handle(from net.IP, seg Segment) {
+    c, ok := s.conns[fourTuple{from, seg.SrcPort, seg.DstPort}]
+    if !ok { /* SYN to a listen port → new Conn in SYN_RECEIVED */ }
+    switch c.state {
+    case StateSynReceived: // handshake ACK
+        c.state = StateEstablished
+        c.stream = newStreamConn(s, c)
+        go s.listen[seg.DstPort].push(c.stream) // → Accept, once
+    case StateEstablished:
+        if seg.Seq == c.rcvNxt { c.stream.deliver(seg.Payload) } // → Read
+    }
+}</code></pre>
+        <p class="fragment soft">Simplified: the real code also advances <code>rcvNxt</code>, frees acked <code>outq</code> entries, drops out-of-order segments with a re-ACK, and runs the FIN and RST paths.</p>
+      </section>
+
       <section id="struct-stream" class="code-tight">
         <h2>A TCP connection, as a Go <code>net.Conn</code></h2>
         <p class="code-path">internal/tcp/stream.go</p>
@@ -953,10 +990,10 @@ func (c *StreamConn) Close() error                 { /* → FIN */ }</code></pre
     done chan struct{}
 }
 
-func (s *Stack) NewListener(port uint16) *Listener { /* Listen + wire Accept */ }
+func (s *Stack) Listen(port uint16) *Listener { /* s.listen[port] = ln */ }
 
 // a Conn just reached ESTABLISHED: the stack pushes, the app pulls
-func (l *Listener) OnAccept(c *StreamConn) { l.ch &lt;- c }
+func (l *Listener) push(c *StreamConn) { l.ch &lt;- c }
 func (l *Listener) Accept() (net.Conn, error) {
     select {
     case c := &lt;-l.ch: return c, nil
@@ -1033,7 +1070,7 @@ func (s *Server) ServeConn(c net.Conn) {
       <section id="http-go">
         <h2>Or just hand the Listener to Go</h2>
         <p class="code-path">cmd/mytcp/main.go · <code>-app http-go</code></p>
-        <pre><code class="language-go" data-trim data-line-numbers="1-2|4-8">ln := stack.TCP().NewListener(80)
+        <pre><code class="language-go" data-trim data-line-numbers="1-2|4-8">ln := stack.TCP().Listen(80) // where Go code would call net.Listen
 
 // Go’s own HTTP server, unchanged
 srv := &amp;http.Server{Handler: page}
@@ -1122,40 +1159,67 @@ srv.Serve(ln) // Accept → Read → Write, all through our TCP</code></pre>
         <p class="soft">TLS: secure transport. Nobody in between can read or change the bytes. It runs on the same TCP code, unchanged.</p>
       </section>
 
-      <section>
-        <h2>HTTPS is HTTP plus one optional layer</h2>
-        <pre class="diagram-code"><code class="nohighlight">HTTP  ─┬─ our server on net.Listener     (-app http)
-       ├─ net/http.Server on same Listener (-app http-go)
-       └─ inside TLS on TCP              (-app https or -app https-diy)
-                 ↑
-         the same TCP code underneath</code></pre>
-        <p class="fragment soft">We added HTTPS late in the project, and nothing below TCP had to change. Same for swapping in Go’s HTTP server.</p>
+      <section id="tls-conn">
+        <h2>TLS takes a <code>net.Conn</code> and returns a <code>net.Conn</code></h2>
+        <pre><code class="language-plaintext" data-trim data-line-numbers="1-3|4-6|7-10">http1.ServeConn(c)               the same HTTP code, with or without TLS
+   │  Read / Write: plaintext
+   ▼
+TLS conn         net.Conn        tls.Conn (Go’s) or mintls.Conn (ours)
+   │  Read / Write: records, a 5-byte header + encrypted payload
+   ▼
+tcp.StreamConn   net.Conn        our TCP
+   │  segments
+   ▼
+tcp.Listener     net.Listener</code></pre>
+        <p class="fragment soft">The interface is the same above and below, so TLS is optional: slot it in or leave it out. HTTP can’t tell.</p>
       </section>
 
-      <section>
-        <h2>Adding HTTPS without changing the layers below</h2>
-        <p class="code-path">internal/https1/diy.go</p>
-        <pre><code class="language-go" data-trim data-line-numbers="3-4|5-8|9-11|12-13">// runs once for each new TCP connection on port 443
-func (s *DIYServer) serve(raw *tcp.StreamConn) {
-    // wrap the plain TCP stream in our TLS
-    tlsConn := mintls.Server(raw, s.cfg)
-    // agree on keys first; give up if the handshake fails
-    if err := tlsConn.Handshake(s.cfg); err != nil {
-        return
-    }
-    // Read decrypts, then the same HTTP code as plain HTTP runs
-    n, _ := tlsConn.Read(buf)
-    reply, closeAfter := s.http.OnData(key, buf[:n])
-    // Write encrypts the reply before handing it to TCP
-    tlsConn.Write(reply)
-}</code></pre>
-        <p class="fragment soft">TLS sits between TCP and HTTP. Neither of them had to change.</p>
+      <section id="tls-two" class="code-tight">
+        <h2>Go’s TLS or ours: one line apart</h2>
+        <p class="code-path">internal/https1/server.go · diy.go</p>
+        <pre><code class="language-go" data-trim data-line-numbers="1-4|6-9">// -app https: Go’s crypto/tls
+tlsConn := tls.Server(raw, cfg)    // *tls.Conn is a net.Conn
+tlsConn.Handshake()
+s.http.ServeConn(tlsConn)
+
+// -app https-diy: our mintls
+tlsConn := mintls.Server(raw, cfg) // *mintls.Conn is a net.Conn
+tlsConn.Handshake(cfg)
+s.http.ServeConn(tlsConn)</code></pre>
+        <p class="fragment soft"><code>raw</code> is the <code>StreamConn</code> our Listener handed out. Neither TLS library knows that the TCP underneath is ours.</p>
+      </section>
+
+      <section id="tls-stdlib" class="code-tight">
+        <h2>Or let Go do everything above TCP</h2>
+        <p class="code-path">cmd/mytcp/main.go · <code>-app https-go</code></p>
+        <pre><code class="language-go" data-trim data-line-numbers="1|2|3-4">ln := stack.TCP().Listen(443)      // ours: a net.Listener
+tlsLn := tls.NewListener(ln, cfg)  // Go’s: wraps any net.Listener
+srv := &amp;http.Server{Handler: page} // Go’s: serves any net.Listener
+srv.Serve(tlsLn)</code></pre>
+        <p class="fragment soft">Every layer above TCP is now the standard library, running on the TCP we wrote. Interfaces are the only thing connecting them.</p>
+      </section>
+
+      <section id="tls-compare">
+        <h2>Go’s <code>crypto/tls</code> vs our <code>mintls</code></h2>
+        <table class="compact">
+          <thead><tr><th></th><th>crypto/tls</th><th>mintls</th></tr></thead>
+          <tbody>
+            <tr class="fragment"><td>Versions</td><td>TLS 1.0–1.3 (we set 1.2+)</td><td>TLS 1.2 only</td></tr>
+            <tr class="fragment"><td>Cipher suites</td><td>many</td><td>exactly one (AES-128-GCM)</td></tr>
+            <tr class="fragment"><td>Roles</td><td>client and server</td><td>server only</td></tr>
+            <tr class="fragment"><td>Handshake</td><td>runs on first Read or Write</td><td>you call <code>Handshake(cfg)</code></td></tr>
+            <tr class="fragment"><td>Alerts</td><td>full set, incl. close_notify</td><td>sends none; any alert = EOF</td></tr>
+            <tr class="fragment"><td>Size</td><td>~14,500 lines</td><td>~1,070 lines</td></tr>
+            <tr class="fragment em-row"><td>Interface</td><td><code>net.Conn</code></td><td><code>net.Conn</code></td></tr>
+          </tbody>
+        </table>
+        <p class="fragment soft">curl needs <code>--tls-max 1.2</code> to talk to mintls. Small on purpose, so you can read all of it.</p>
       </section>
 
       <section class="divider" data-background-gradient="linear-gradient(160deg, #0c1218 0%, #1a1420 100%)">
         <p class="section-label">Deep dive</p>
         <h2>Peeling TLS</h2>
-        <p class="lede">Another onion, with cryptography inside.</p>
+        <p class="lede">Inside mintls: another onion, with cryptography inside.</p>
         <aside class="notes">
           mintls: our own TLS 1.2 server, one cipher suite
           (ECDHE_ECDSA_WITH_AES_128_GCM_SHA256). We wrote the protocol;
@@ -1180,6 +1244,26 @@ n   := binary.BigEndian.Uint16(hdr[3:5]) // how long the payload is
 // then read exactly that many bytes
 payload = make([]byte, n)
 io.ReadFull(r, payload)                  // ← the next layer's message</code></pre>
+      </section>
+
+      <section id="mintls-conn" class="code-tight">
+        <h2>Inside <code>mintls.Conn</code>: records in, records out</h2>
+        <p class="code-path">internal/mintls/conn.go (trimmed)</p>
+        <pre><code class="language-go" data-trim data-line-numbers="1-8|10-14">func (c *Conn) Read(p []byte) (int, error) {
+    for len(c.rbuf) == 0 {
+        typ, vers, payload, _ := readRecord(c.raw) // raw is our StreamConn
+        plain, _ := c.in.open(typ, vers, payload)  // check the tag, decrypt
+        c.rbuf = append(c.rbuf, plain...)
+    }
+    // … copy out of rbuf
+}
+
+func (c *Conn) Write(p []byte) (int, error) {
+    // for each chunk of at most 4096 bytes:
+    enc := c.out.seal(recordApplicationData, VersionTLS12, chunk) // encrypt, add tag
+    writeRecord(c.raw, recordApplicationData, VersionTLS12, enc)
+}</code></pre>
+        <p class="fragment soft">The same shape as <code>StreamConn</code> one layer down: <code>Read</code> drains a buffer, and <code>Write</code> turns bytes into the next layer’s units. Records here, segments there.</p>
       </section>
 
       <section id="tls-flow">
@@ -1360,7 +1444,7 @@ record payload = explicitNonce(8) || ciphertext || tag(16)</code></pre>
             <tr class="fragment"><td>ARP and IPv4 + ICMP</td><td><code>ping 10.0.0.2</code></td></tr>
             <tr class="fragment"><td>TCP handshake, data, resends</td><td><code>nc</code> to an echo app</td></tr>
             <tr class="fragment"><td>HTTP (ours, or Go’s <code>net/http</code>)</td><td><code>curl http://10.0.0.2/</code></td></tr>
-            <tr class="fragment"><td>TLS</td><td><code>curl -k https://10.0.0.2/</code></td></tr>
+            <tr class="fragment"><td>TLS (Go’s, or our mintls)</td><td><code>curl -k https://10.0.0.2/</code></td></tr>
           </tbody>
         </table>
         <p class="fragment soft">We didn’t start a layer until the one below it worked.</p>
@@ -1400,7 +1484,8 @@ make lab-up &amp;&amp; make lab-build
 ping -c 3 10.0.0.2       # exercises ARP + ICMP
 curl http://10.0.0.2/    # ARP + IP + TCP + HTTP
 
-# HTTPS with our own TLS: restart shell A with -app https-diy, then
+# HTTPS: restart shell A with -app https (Go’s TLS), -app https-go
+# (all stdlib above TCP) or -app https-diy (our mintls), then
 # (-k accepts our self-signed cert; mintls only speaks TLS 1.2)
 curl -k --tlsv1.2 --tls-max 1.2 https://10.0.0.2/</code></pre>
       </section>

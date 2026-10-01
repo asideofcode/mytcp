@@ -1,21 +1,16 @@
-// Package https1 serves HTTP/1 over crypto/tls on our userspace TCP streams.
+// Package https1 serves HTTP/1 over TLS on our userspace TCP.
 //
-// We do not implement TLS — Go's crypto/tls does. This package only bridges
-// tcp.StreamConn → tls.Server → the existing http1 app.
+// Each server takes a net.Listener (our tcp.Listener in practice), wraps
+// every accepted net.Conn in TLS, and hands the decrypted conn to the
+// same http1.Server that serves plain HTTP:
 //
-// TLS needs a blocking, net.Conn-style byte stream, not the per-segment
-// callbacks a tcp.App gets. So these servers are tcp.Acceptors instead: TCP
-// hands over a *tcp.StreamConn once the handshake reaches ESTABLISHED. That
-// StreamConn is a net.Conn whose Read blocks on a buffer the TCP input path
-// fills, and whose Write turns bytes into TCP segments. Each connection gets
-// its own goroutine running a plain read-decrypt, answer, encrypt-write loop:
+//	TCP segments ⇄ tcp.StreamConn (net.Conn) ⇄ TLS conn (net.Conn) ⇄ http1.Server.ServeConn
 //
-//	TCP segments ⇄ tcp.StreamConn (net.Conn) ⇄ TLS (crypto/tls or mintls) ⇄ http1.Server.OnData
-//
-// Server uses crypto/tls (TLS 1.2 or 1.3). DIYServer in diy.go uses our own
-// mintls (TLS 1.2, one cipher suite). Both serve the same http1 page.
-// Certificates are generated at startup and self-signed, so clients must
-// skip verification (curl -k).
+// TLS needs a blocking Read/Write byte stream, which is exactly what a
+// net.Conn is. Server uses Go's crypto/tls (TLS 1.2 or 1.3). DIYServer in
+// diy.go uses our own mintls (TLS 1.2, one cipher suite). Certificates are
+// generated at startup and self-signed, so clients must skip verification
+// (curl -k).
 package https1
 
 import (
@@ -32,18 +27,16 @@ import (
 	"time"
 
 	"github.com/asideofcode/mytcp/internal/http1"
-	"github.com/asideofcode/mytcp/internal/tcp"
 )
 
-// Server implements tcp.Acceptor using Go's crypto/tls. It decrypts each
-// connection and feeds the plaintext to an http1.Server.
+// Server is HTTPS using Go's crypto/tls.
 type Server struct {
 	cfg  *tls.Config
 	http *http1.Server
 	log  *log.Logger
 }
 
-// New builds a TLS acceptor with an ephemeral self-signed cert for ip.
+// New builds a crypto/tls server with an ephemeral self-signed cert for ip.
 func New(ip net.IP, logger *log.Logger) (*Server, error) {
 	if logger == nil {
 		logger = log.Default()
@@ -64,76 +57,41 @@ func New(ip net.IP, logger *log.Logger) (*Server, error) {
 	}, nil
 }
 
-// OnAccept is called by the TCP layer once per new ESTABLISHED connection.
-// It must not block the TCP input path, so the real work runs in its own
-// goroutine.
-func (s *Server) OnAccept(conn *tcp.StreamConn) {
-	go s.serve(conn)
+// TLSConfig returns the server's crypto/tls config (self-signed cert,
+// TLS 1.2 minimum), for use with tls.NewListener.
+func (s *Server) TLSConfig() *tls.Config { return s.cfg }
+
+// Serve accepts connections on ln and serves each in its own goroutine.
+// It returns when ln.Accept fails (for example after ln.Close).
+func (s *Server) Serve(ln net.Listener) error {
+	for {
+		c, err := ln.Accept()
+		if err != nil {
+			return err
+		}
+		go s.serve(c)
+	}
 }
 
 // serve runs one HTTPS connection from TLS handshake to close.
-func (s *Server) serve(raw *tcp.StreamConn) {
-	defer raw.Close()
-
+func (s *Server) serve(raw net.Conn) {
 	// tls.Server only needs a net.Conn. It has no idea the bytes travel
 	// over a TCP written in userspace.
 	tlsConn := tls.Server(raw, s.cfg)
-	// Deferred calls run last-in first-out, so the TLS conn closes first:
-	// after a completed handshake it sends a close_notify alert, then it
-	// closes the TCP stream, which sends our FIN.
-	defer tlsConn.Close()
 
 	// The handshake is several round trips of TLS records over the same
-	// StreamConn: hello messages, certificate, key exchange, Finished.
+	// conn: hello messages, certificate, key exchange, Finished.
 	if err := tlsConn.Handshake(); err != nil {
 		s.log.Printf("https: handshake %v: %v", raw.RemoteAddr(), err)
+		_ = raw.Close()
 		return
 	}
 	s.log.Printf("https: handshake ok %v %s", raw.RemoteAddr(), tls.VersionName(tlsConn.ConnectionState().Version))
 
-	// http1.Server keys its per-connection buffer by ConnKey, the same
-	// identity the plain TCP path would use, so rebuild it from the
-	// connection's addresses.
-	key := tcp.ConnKey{
-		RemoteIP:   raw.RemoteAddr().String(),
-		RemotePort: 0,
-		LocalPort:  443,
-	}
-	if ta, ok := raw.RemoteAddr().(*net.TCPAddr); ok {
-		key.RemoteIP = ta.IP.String()
-		key.RemotePort = uint16(ta.Port)
-		key.LocalPort = uint16(raw.LocalAddr().(*net.TCPAddr).Port)
-	}
-	// TCP only calls OnClose on its callback App (NopApp here), so this
-	// loop must drop http1's half-read request itself on every exit.
-	defer s.http.OnClose(key)
-
-	// Each Read returns decrypted application data. As with plain TCP,
-	// a chunk may hold part of a request, so http1 keeps buffering until
-	// it sees the end of the headers. Once it answers, it asks to close.
-	buf := make([]byte, 4096)
-	for {
-		n, err := tlsConn.Read(buf)
-		if n > 0 {
-			reply, closeAfter := s.http.OnData(key, buf[:n])
-			if len(reply) > 0 {
-				// Write encrypts the reply into TLS records, which
-				// StreamConn then splits into TCP segments.
-				if _, werr := tlsConn.Write(reply); werr != nil {
-					s.log.Printf("https: write %v: %v", key, werr)
-					return
-				}
-			}
-			if closeAfter {
-				return
-			}
-		}
-		// Any error ends the connection: io.EOF after the client's
-		// close_notify, or an error if TCP went away or a record was bad.
-		if err != nil {
-			return
-		}
-	}
+	// From here the TLS conn is just another net.Conn: Read decrypts,
+	// Write encrypts. ServeConn's Close sends close_notify, then closes
+	// the TCP stream, which sends our FIN.
+	s.http.ServeConn(tlsConn)
 }
 
 // selfSigned creates a fresh ECDSA P-256 key and a certificate for ip

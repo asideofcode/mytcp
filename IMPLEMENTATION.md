@@ -214,12 +214,12 @@ traffic is trusted; a bit-flip would be processed incorrectly.
 | Feature | Status | Notes |
 |---------|--------|--------|
 | `net.Conn` (`StreamConn`) | **yes** | Blocking Read/Write; used by TLS and HTTP |
-| `net.Listener` (`tcp.Listener`) | **yes** | `NewListener(port)` → `Accept` |
-| `tcp.App` callback (`OnData` / `OnClose`) | **yes** | Echo; HTTPS still feeds http1 via OnData |
-| Echo app (`-app echo`) | **yes** | Port 7 by default |
+| `net.Listener` (`tcp.Listener`) | **yes** | `Stack.Listen(port)` → `Accept`; the only way apps attach |
+| Echo app (`-app echo`) | **yes** | Port 7 by default; `io.Copy(c, c)` per accepted conn |
 | HTTP/1 GET+HEAD (`-app http`) | **yes** | Our server on `net.Listener`; `Connection: close` |
 | HTTP via stdlib (`-app http-go`) | **yes** | Same Listener; `net/http.Server.Serve` |
 | HTTPS (`-app https`) | **yes** | Port 443; Go `crypto/tls` over `tcp.StreamConn` + same HTTP/1; self-signed (`curl -k`) |
+| HTTPS all stdlib (`-app https-go`) | **yes** | `tls.NewListener(ourListener)` + `net/http.Server`; nothing of ours above TCP |
 | HTTPS DIY (`-app https-diy`) | **yes** | Port 443; our `mintls` TLS 1.2 (`ECDHE_ECDSA_AES_128_GCM_SHA256`) + HTTP/1; `curl -k --tlsv1.2 --tls-max 1.2` |
 | HTTP request body / POST | **no** | Headers only |
 | HTTP/1.1 keep-alive, chunked, routing | **no** | One shot then FIN |
@@ -228,11 +228,9 @@ traffic is trusted; a bit-flip would be processed incorrectly.
 
 **`net.Listener` / `net.Conn`** — ESTABLISHED connections are exposed the
 same way a kernel socket is. Hand-rolled HTTP and Go’s `net/http.Server`
-both call `Accept` / `Read` / `Write` on our userspace TCP.
-
-**`tcp.App` callback** — Still used by echo (and by HTTPS after decrypt).
-When a Listener or Acceptor is set, the data path goes through StreamConn
-instead.
+both call `Accept` / `Read` / `Write` on our userspace TCP. HTTPS wraps
+each accepted conn in TLS and hands the TLS conn (also a `net.Conn`) to
+the same `http1.Server.ServeConn`. Every app is a `func(net.Listener) error`.
 
 **Echo app** — Same as Stage 4: payload mirrored. Example: `nc 10.0.0.2 7`.
 

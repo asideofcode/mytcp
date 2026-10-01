@@ -2,9 +2,8 @@
 //
 // Below it, the IPv4 layer hands us segments (Parse turns an IPv4 payload
 // into a Segment, and Stack.Handle processes it). Above it, applications
-// see ordered byte streams, either through the App callback interface
-// (App.OnData gets each in-order chunk) or through a net.Conn (StreamConn)
-// for apps like TLS that want to Read and Write.
+// see what a kernel socket gives them: Stack.Listen returns a net.Listener
+// (Listener), and each accepted connection is a net.Conn (StreamConn).
 //
 // It does the three-way handshake (passive open only), in-order delivery,
 // ACKs, timer-based retransmission, and both close sequences. It
@@ -57,9 +56,6 @@ import (
 //
 //	FIN_WAIT_1 --recv FIN that also ACKs our FIN--> CLOSED
 //	FIN_WAIT_1 --recv FIN, ours not yet ACKed-----> LAST_ACK  (simultaneous close)
-//
-// For callback apps (App.OnData) CLOSE_WAIT is passed through instantly:
-// we send our FIN right after ACKing the peer's.
 //
 // Differences from the full RFC diagram: there is no SYN_SENT (we never
 // connect out), no TIME_WAIT (the connection is forgotten as soon as the
@@ -146,12 +142,10 @@ type Emitter interface {
 type Stack struct {
 	mu       sync.Mutex
 	ourIP    net.IP
-	listen   map[uint16]struct{} // ports in LISTEN
+	listen   map[uint16]*Listener // ports in LISTEN
 	conns    map[fourTuple]*Conn
 	emit     Emitter
-	app      App
-	acceptor Acceptor // optional; when set, ESTABLISHED → StreamConn
-	iss      uint32   // initial sequence number for the next connection
+	iss      uint32 // initial sequence number for the next connection
 	rto      time.Duration
 	maxRetry int
 	now      func() time.Time // replaceable clock, for tests
@@ -183,25 +177,21 @@ type Conn struct {
 	rcvWnd uint16 // window we advertise; fixed, not tied to buffer space
 
 	outq   []outstanding // unacked segments, oldest first
-	stream *StreamConn   // non-nil in stream (Acceptor) mode
+	stream *StreamConn   // the app's net.Conn; set at ESTABLISHED
 }
 
 // NewStack creates a TCP layer for ourIP. Segments go out through emit.
-// If app is nil, connections get EchoApp. If logger is nil, the default
-// logger is used.
-func NewStack(ourIP net.IP, emit Emitter, logger *log.Logger, app App) *Stack {
+// If logger is nil, the default logger is used. Nothing is accepted until
+// Listen opens a port.
+func NewStack(ourIP net.IP, emit Emitter, logger *log.Logger) *Stack {
 	if logger == nil {
 		logger = log.Default()
 	}
-	if app == nil {
-		app = EchoApp{}
-	}
 	return &Stack{
 		ourIP:  ourIP.To4(),
-		listen: make(map[uint16]struct{}),
+		listen: make(map[uint16]*Listener),
 		conns:  make(map[fourTuple]*Conn),
 		emit:   emit,
-		app:    app,
 		// A fixed, predictable starting ISN keeps logs and demos
 		// readable. Real stacks pick ISNs from a clock plus a secret hash
 		// (RFC 9293 section 3.4.1, RFC 6528) so attackers cannot guess them.
@@ -216,35 +206,29 @@ func NewStack(ourIP net.IP, emit Emitter, logger *log.Logger, app App) *Stack {
 	}
 }
 
-// SetAcceptor enables stream-mode accepts (TLS, etc.). Every connection
-// that reaches ESTABLISHED is then wrapped in a StreamConn and passed to
-// a.OnAccept, and App.OnData is no longer called. Call it before any
-// traffic arrives; the field is read without the lock.
-func (s *Stack) SetAcceptor(a Acceptor) { s.acceptor = a }
-
-// Listen opens port for incoming connections. SYNs to ports that are not
-// listening are answered with RST.
-func (s *Stack) Listen(port uint16) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.listen[port] = struct{}{}
-	s.log.Printf("tcp: LISTEN :%d", port)
-}
-
 // Handle is the entry point from IPv4: it processes one incoming segment
 // from srcIP (whose Ethernet address is srcMAC).
 //
 // The whole state machine runs under s.mu. If this segment completed a
-// handshake in stream mode, the acceptor is started on its own goroutine
-// after the lock is released, so application code never runs while we
-// hold the stack lock.
+// handshake, the new StreamConn is pushed to its port's Listener on a new
+// goroutine after the lock is released, so a slow Accept never stalls
+// the input path.
 func (s *Stack) Handle(srcMAC net.HardwareAddr, srcIP net.IP, seg Segment) error {
 	s.mu.Lock()
 	var accepted *StreamConn
 	err := s.handleLocked(srcMAC, srcIP, seg, &accepted)
+	var ln *Listener
+	if accepted != nil {
+		ln = s.listen[seg.DstPort]
+	}
 	s.mu.Unlock()
-	if accepted != nil && s.acceptor != nil {
-		go s.acceptor.OnAccept(accepted)
+	if accepted != nil {
+		if ln != nil {
+			go ln.push(accepted)
+		} else {
+			// The Listener closed during the handshake.
+			go accepted.Close()
+		}
 	}
 	return err
 }
@@ -333,9 +317,9 @@ func (s *Stack) acceptSYNLocked(srcMAC net.HardwareAddr, srcIP net.IP, seg Segme
 }
 
 // driveConnLocked runs one segment through the state machine of an
-// existing connection. Caller holds s.mu. If the segment completes a
-// stream-mode handshake, *accepted is set so Handle can start the
-// acceptor after unlocking.
+// existing connection. Caller holds s.mu. If the segment completes the
+// handshake, *accepted is set so Handle can pass it to the Listener after
+// unlocking.
 //
 // Simplification: incoming sequence numbers are checked only for exact
 // equality with rcvNxt, not against the full receive window as RFC 9293
@@ -369,14 +353,12 @@ func (s *Stack) driveConnLocked(c *Conn, seg Segment, accepted **StreamConn) err
 			c.state = StateEstablished
 			c.sndUna = seg.Ack
 			s.log.Printf("tcp: conn %v ESTABLISHED", c.tuple)
-			// In stream mode, this is the moment accept() returns.
-			if s.acceptor != nil && c.stream == nil {
-				c.stream = newStreamConn(s, c)
-				*accepted = c.stream
-			}
+			// This is the moment Accept returns.
+			c.stream = newStreamConn(s, c)
+			*accepted = c.stream
 		}
 		// The handshake ACK may already carry the first request bytes.
-		if len(seg.Payload) > 0 {
+		if c.state == StateEstablished && len(seg.Payload) > 0 {
 			return s.recvDataLocked(c, seg)
 		}
 		return nil
@@ -393,24 +375,12 @@ func (s *Stack) driveConnLocked(c *Conn, seg Segment, accepted **StreamConn) err
 			// acknowledges it. Any payload in the same segment is not
 			// delivered or counted here.
 			c.rcvNxt = seg.Seq + 1
-			// Stream readers get EOF once the buffer drains.
-			if c.stream != nil {
-				c.stream.peerClosed()
-			}
+			// Read returns EOF once the buffer drains. Our FIN waits for
+			// the app's Close.
+			c.stream.peerClosed()
 			c.state = StateCloseWait
 			s.log.Printf("tcp: conn %v CLOSE_WAIT", c.tuple)
-			if err := s.sendCtrlLocked(c, FlagACK, nil); err != nil {
-				return err
-			}
-			// Stream apps close via StreamConn.Close; callback apps FIN
-			// immediately. A callback app has already sent every reply
-			// synchronously inside OnData, so there is nothing left to
-			// send and we can close our half right away.
-			if c.stream == nil {
-				c.state = StateLastAck
-				return s.sendCtrlLocked(c, FlagFIN|FlagACK, nil)
-			}
-			return nil
+			return s.sendCtrlLocked(c, FlagACK, nil)
 		}
 		return s.recvDataLocked(c, seg)
 
@@ -475,7 +445,7 @@ func (s *Stack) driveConnLocked(c *Conn, seg Segment, accepted **StreamConn) err
 }
 
 // recvDataLocked accepts payload bytes in ESTABLISHED (or on the handshake
-// ACK) and hands them to the application. Caller holds s.mu.
+// ACK) and queues them for StreamConn.Read. Caller holds s.mu.
 func (s *Stack) recvDataLocked(c *Conn, seg Segment) error {
 	if len(seg.Payload) == 0 {
 		return nil
@@ -492,47 +462,20 @@ func (s *Stack) recvDataLocked(c *Conn, seg Segment) error {
 	c.rcvNxt += uint32(len(seg.Payload))
 	s.log.Printf("tcp: recv %d bytes from %v: %q", len(seg.Payload), c.tuple, truncate(seg.Payload, 64))
 
-	// Stream mode: queue the bytes for StreamConn.Read and ACK them.
-	// Replies come later through StreamConn.Write.
-	if c.stream != nil {
-		c.stream.deliver(seg.Payload)
-		return s.sendCtrlLocked(c, FlagACK, nil)
-	}
-
-	// Callback mode: the app answers synchronously, under the stack lock.
-	reply, closeAfter := s.app.OnData(c.tuple.key(), seg.Payload)
-
-	// Piggyback the ACK on the reply when there is one, so a request and
-	// its response cost one segment, not two. The reply is sent as a
-	// single segment, however large.
-	if len(reply) > 0 {
-		if err := s.sendCtrlLocked(c, FlagACK|FlagPSH, reply); err != nil {
-			return err
-		}
-	} else if err := s.sendCtrlLocked(c, FlagACK, nil); err != nil {
-		return err
-	}
-
-	// Active close requested by the app (e.g. HTTP "Connection: close"):
-	// send our FIN right after the reply.
-	if closeAfter && c.state == StateEstablished {
-		c.state = StateFinWait1
-		s.log.Printf("tcp: conn %v FIN_WAIT_1 (app close)", c.tuple)
-		return s.sendCtrlLocked(c, FlagFIN|FlagACK, nil)
-	}
-	return nil
+	// Queue the bytes for Read and ACK them now. Replies come later,
+	// whenever the app calls Write.
+	c.stream.deliver(seg.Payload)
+	return s.sendCtrlLocked(c, FlagACK, nil)
 }
 
 // destroyLocked forgets a connection: wakes any StreamConn reader or
-// writer, removes the TCB, and tells the app. Unacked segments are
-// discarded with it. Caller holds s.mu.
+// writer and removes the TCB. Unacked segments are discarded with it.
+// Caller holds s.mu.
 func (s *Stack) destroyLocked(c *Conn) {
-	key := c.tuple.key()
 	if c.stream != nil {
 		c.stream.teardown()
 	}
 	delete(s.conns, c.tuple)
-	s.app.OnClose(key)
 }
 
 // writeStream sends one chunk of StreamConn.Write data as a single

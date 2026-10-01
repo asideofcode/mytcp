@@ -30,7 +30,6 @@
     "internal/tap/link_stub.go",
     "internal/tap/tap_linux.go",
     "internal/tap/tap_stub.go",
-    "internal/tcp/app.go",
     "internal/tcp/listener.go",
     "internal/tcp/listener_test.go",
     "internal/tcp/segment.go",
