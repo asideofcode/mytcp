@@ -86,12 +86,44 @@ sendto(5, "HEAD / HTTP/1.1\r\nHost: google.com\r\n"..., 75) = 75
 recvfrom(5, "HTTP/1.1 301 Moved Permanently\r\n"
             "Location: http://www.google.com/\r\n"..., ...) = 554
 close(5) = 0</code></pre>
-        <p class="fragment soft">curl only sent and received HTTP text. The handshake, the headers and any resends all happened inside the kernel, where curl can’t see them. The next two slides show what that looks like on the wire.</p>
+        <p class="fragment soft">curl only sent and received HTTP text. The handshake, the headers and any resends all happened inside the kernel, where curl can’t see them. Next: what that looks like on the wire.</p>
         <aside class="notes">
           Real capture from a Debian container. EINPROGRESS / poll / DNS omitted for clarity.
           Point at connect: SYN/SYN+ACK/ACK happened with no syscall per packet.
           Point at sendto/recvfrom: the strings are plain HTTP — a HEAD, then a 301 redirect.
           Plain HTTP on purpose: the audience can read both sides. TLS would seal the story too early.
+        </aside>
+      </section>
+
+      <section id="wire-life">
+        <h2>Behind those few syscalls</h2>
+        <div class="mermaid wire-life" data-steps data-controls>
+%%{init: {"sequence": {"messageMargin": 2, "height": 34, "actorMargin": 50, "messageFontSize": 24, "actorFontSize": 22, "boxMargin": 2}}}%%
+sequenceDiagram
+  participant A as curl
+  participant K as Kernel
+  participant R as Gateway 172.17.0.1
+  participant G as google.com
+  A->>K: connect(142.251.30.113, port 80)
+  K->>R: Ethernet broadcast · ARP: who has 172.17.0.1?
+  R-->>K: Ethernet · ARP: 172.17.0.1 is at 02:42:f2:e3:9b:63
+  K->>G: Ethernet · IPv4 · TCP SYN
+  G-->>K: Ethernet · IPv4 · TCP SYN+ACK
+  K->>G: Ethernet · IPv4 · TCP ACK
+  K-->>A: connect() = 0
+  A->>K: sendto("HEAD / HTTP/1.1 …") · 75 bytes
+  K->>G: Ethernet · IPv4 · TCP · HTTP HEAD · 141 bytes
+  G-->>K: Ethernet · IPv4 · TCP · HTTP/1.1 301 Moved
+  K-->>A: recvfrom() = the HTTP text only
+  A->>K: close()
+  K->>G: Ethernet · IPv4 · TCP FIN, then ACKs both ways
+        </div>
+        <p class="fragment soft">ARP finds the next hop, TCP opens a connection, HTTP rides inside it.</p>
+        <aside class="notes">
+          Same curl -sI http://google.com/ as the strace slide, inside Docker.
+          ARP asks for the gateway, not google: google is off-subnet, so every frame goes to the gateway’s MAC
+          while the IPv4 header still says google. The kernel may skip ARP if the gateway is cached.
+          Point at the left lane: four syscalls. Right lanes: everything this talk builds.
         </aside>
       </section>
 

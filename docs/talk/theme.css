@@ -771,6 +771,11 @@ html.reveal-full-page,
   width: auto;
 }
 
+.reveal .mermaid.wire-life svg {
+  max-height: 480px;
+  width: auto;
+}
+
 .reveal .mermaid.tls-life svg {
   max-height: 470px;
   width: auto;
