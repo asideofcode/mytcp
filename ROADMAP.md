@@ -7,7 +7,7 @@ own ARP → IPv4 → ICMP → TCP.
 Companion: sockets in `../c/02_tcp_server.c` use the *kernel* TCP.
 This project implements the bytes those syscalls hide.
 
-Run live TAP under Linux (Docker on macOS). Parser unit tests run anywhere.
+Run live TAP under Linux (Docker on macOS). Decode unit tests run anywhere.
 
 ---
 
@@ -29,7 +29,7 @@ Ethernet frames. `-dump-only` prints every RX frame and replies to nothing.
 
 ## Stage 1 — Ethernet + ARP *(done)*
 
-Parse Ethernet II. When the host ARPs for our IP, reply with our MAC
+Decode Ethernet II. When the host ARPs for our IP, reply with our MAC
 so the kernel can send IPv4 to us.
 
 | What works | What hurts |
@@ -40,7 +40,7 @@ so the kernel can send IPv4 to us.
 
 ## Stage 2 — IPv4 + ICMP echo *(done)*
 
-Parse IPv4; answer ICMP echo requests. `ping 10.0.0.2` works.
+Decode IPv4; answer ICMP echo requests. `ping 10.0.0.2` works.
 
 | What works | What hurts |
 |------------|------------|
@@ -94,10 +94,26 @@ listens on `:80`, buffers to `\r\n\r\n`, answers GET/HEAD, then FINs
 
 ---
 
+## Stage 7 — Client side *(done)*
+
+`Stack.Dial` sends the first SYN (SYN_SENT), so mytcp can connect out.
+An ARP cache and a one-gateway route find the next hop's MAC.
+`stack.DialContext` plugs into `http.Transport`, so `-get URL` is Go's own
+`http.Client` on our TCP; `-dial host:port` is nc. Through the lab's NAT
+(`make lab-nat`) it reaches the internet. Host names go through our own
+UDP and a hand-rolled DNS stub resolver, so the whole client path makes
+no kernel socket calls; `make smoke-internet` proves it with strace.
+
+| What works | What hurts |
+|------------|------------|
+| `mytcp -get https://www.google.com/` | No MSS option, no OOO reassembly, A-only DNS, no cache |
+
+---
+
 ## Not yet
 
 See [IMPLEMENTATION.md](IMPLEMENTATION.md) for the full yes/partial/no matrix.
 
 Headline gaps called out there: **flow-control window enforcement**,
 **congestion window**, window scaling, SACK, OOO reassembly, RTT-based RTO,
-active open, UDP, IPv6, fragmentation, TLS, full HTTP/1.1.
+UDP, IPv6, fragmentation, TLS, full HTTP/1.1.

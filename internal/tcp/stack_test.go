@@ -1,22 +1,38 @@
 package tcp
 
 import (
+	"context"
 	"io"
 	"log"
 	"net"
+	"sync"
 	"testing"
 	"time"
 )
 
 type fakeEmit struct {
+	mu   sync.Mutex
 	n    int
 	last Segment
 }
 
 func (f *fakeEmit) SendTCP(dstMAC net.HardwareAddr, dstIP net.IP, seg Segment) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.n++
 	f.last = seg
 	return nil
+}
+
+func (f *fakeEmit) Resolve(ctx context.Context, ip net.IP) (net.HardwareAddr, error) {
+	return net.HardwareAddr{0x02, 0, 0, 0, 0, 1}, nil
+}
+
+// sent returns the send count and the latest segment.
+func (f *fakeEmit) sent() (int, Segment) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.n, f.last
 }
 
 func TestRetransmitTick(t *testing.T) {
@@ -41,5 +57,18 @@ func TestRetransmitTick(t *testing.T) {
 	s.Tick()
 	if em.n != 2 {
 		t.Fatalf("expected retransmit, got %d sends", em.n)
+	}
+}
+
+func TestNoRSTForRST(t *testing.T) {
+	em := &fakeEmit{}
+	s := NewStack(net.IPv4(10, 0, 0, 2), em, log.New(io.Discard, "", 0))
+	if err := s.Handle(nil, net.IPv4(10, 0, 0, 1), Segment{
+		SrcPort: 9000, DstPort: 49152, Seq: 7, Flags: FlagRST,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if n, _ := em.sent(); n != 0 {
+		t.Fatalf("answered a stray RST with %d segments", n)
 	}
 }

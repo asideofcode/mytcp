@@ -6,7 +6,7 @@
 // a fresh 20-byte header with a correct checksum. It also provides the
 // Internet checksum (RFC 1071) that ICMP and TCP reuse.
 //
-// Deliberately left out: IP options (skipped on parse, never sent),
+// Deliberately left out: IP options (skipped on decode, never sent),
 // fragmentation and reassembly, header checksum verification on receive,
 // and routing (there is only one link, the TAP device).
 package ip4
@@ -29,9 +29,9 @@ const (
 	ProtoUDP = 17
 )
 
-// Packet is an IPv4 datagram (options ignored / stripped on parse).
+// Packet is an IPv4 datagram (options ignored / stripped on decode).
 // Fields that the stack computes itself (version, header length, total
-// length, checksum) are not stored; Marshal fills them in.
+// length, checksum) are not stored; Encode fills them in.
 type Packet struct {
 	TOS       uint8  // type of service / DSCP; 0 means ordinary traffic
 	ID        uint16 // identification, used to reassemble fragments
@@ -43,7 +43,7 @@ type Packet struct {
 	Payload   []byte // the ICMP or TCP message
 }
 
-// Parse decodes an IPv4 packet. The on-the-wire header layout is:
+// Decode decodes an IPv4 packet. The on-the-wire header layout is:
 //
 //	0       1       2       4       6       8     9     10       12      16      20
 //	+-------+-------+-------+-------+-------+-----+-----+--------+-------+-------+----------
@@ -54,7 +54,7 @@ type Packet struct {
 // Multi-byte fields are big-endian (network byte order). Options, if the
 // header has any, are skipped. The checksum is not verified. Fragments are
 // not detected: a fragment is returned as if it were a whole packet.
-func Parse(b []byte) (Packet, error) {
+func Decode(b []byte) (Packet, error) {
 	if len(b) < MinHeaderLen {
 		return Packet{}, fmt.Errorf("ipv4: too short (%d)", len(b))
 	}
@@ -95,12 +95,12 @@ func Parse(b []byte) (Packet, error) {
 	}, nil
 }
 
-// Marshal encodes the packet into wire bytes, using the same layout as
-// Parse. It always writes a 20-byte header with no options, computes the
+// Encode encodes the packet into wire bytes, using the same layout as
+// Decode. It always writes a 20-byte header with no options, computes the
 // total length and the header checksum, and uses a TTL of 64 when p.TTL
 // is zero. It does not fragment: the caller must keep the payload small
 // enough for the link.
-func (p Packet) Marshal() []byte {
+func (p Packet) Encode() []byte {
 	payload := p.Payload
 	total := MinHeaderLen + len(payload)
 	out := make([]byte, total)

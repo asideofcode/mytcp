@@ -8,7 +8,7 @@ http://127.0.0.1:8766/ (arrows · F fullscreen · S speaker notes).
 
 **Reasoning essay (non-slides):** [layers-and-onions.md](layers-and-onions.md) —
 motivation, giants/foresight, and what “same interface” means (the onion:
-Parse/Marshal structs + limited ops + nested payload).
+Decode/Encode structs + limited ops + nested payload).
 
 Use this file as the **outline / speaker notes source**. The deck follows it.
 
@@ -265,7 +265,7 @@ in a teaching demo.
 **Title:** Bytes in → demux / decide → bytes out
 
 **Clarify:** Not one Go `interface` type — each protocol is a **struct**
-with **Parse / Marshal**, a **small verb set**, and a **payload** that is
+with **Decode / Encode**, a **small verb set**, and a **payload** that is
 the next layer. That shared habit *is* the onion interface.
 (See [layers-and-onions.md](layers-and-onions.md).)
 

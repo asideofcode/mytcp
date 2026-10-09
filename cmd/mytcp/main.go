@@ -17,15 +17,22 @@
 //	mytcp -dump-only                    # decode and capture frames, never reply
 //	mytcp -i tap1 -ip 10.0.1.2 -host 10.0.1.1/24 -tcp 8080
 //	mytcp -dump=false -pcap captures/run1
+//	mytcp -dial 10.0.0.1:9000           # client: like nc, stdin/stdout over our TCP
+//	mytcp -get http://10.0.0.1:8080/    # client: Go's http.Client over our Dial
 //
-// Then, from another shell on the same machine: curl http://10.0.0.2/
-// or ping 10.0.0.2.
+// As a server, try it from another shell on the same machine:
+// curl http://10.0.0.2/ or ping 10.0.0.2. With -dial or -get, mytcp
+// connects out instead and exits when the exchange is over; addresses off
+// the -host subnet go via -gw, and host names are looked up by our own
+// DNS client (-dns), so the client path opens no kernel sockets at all.
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"errors"
 	"flag"
+	"fmt"
 	"io"
 	"log"
 	"net"
@@ -45,8 +52,17 @@ import (
 )
 
 // main parses flags, picks the TCP application, opens the TAP, wires the
-// stack together, and then runs until Ctrl-C or a read error.
+// stack together, and then runs until Ctrl-C, a read error, or the end of
+// a -dial / -get exchange.
 func main() {
+	// Registered first so it runs last, after the other deferred Closes.
+	exitCode := 0
+	defer func() {
+		if exitCode != 0 {
+			os.Exit(exitCode)
+		}
+	}()
+
 	// The first four flags are identity: which TAP to use, the address we
 	// pretend to be, the address the kernel gets on its side of the
 	// virtual cable, and our MAC. The two IPs share a subnet so the kernel
@@ -64,8 +80,13 @@ func main() {
 		doDump   = flag.Bool("dump", true, "layered onion decode of RX/TX frames")
 		dumpOnly = flag.Bool("dump-only", false, "Stage 0: decode frames only, no replies")
 		pcapPath = flag.String("pcap", "captures/latest", "capture stem (.jsonl + .pcap); empty disables")
+		gwStr    = flag.String("gw", "", "gateway for addresses off the -host subnet (default: the -host address)")
+		dialAddr = flag.String("dial", "", "client: connect to host:port and copy stdin/stdout, like nc")
+		getURL   = flag.String("get", "", "client: fetch URL with net/http.Client over our TCP")
+		dnsStr   = flag.String("dns", "1.1.1.1", "DNS server our own resolver asks for -dial/-get names (reached via -gw; the lab's 127.0.0.11 is loopback and unreachable)")
 	)
 	flag.Parse()
+	client := *dialAddr != "" || *getURL != ""
 
 	mac, err := net.ParseMAC(*macStr)
 	if err != nil {
@@ -126,6 +147,28 @@ func main() {
 		port = defPort
 	}
 
+	var dnsIP net.IP
+	if *dnsStr != "" {
+		if dnsIP = net.ParseIP(*dnsStr).To4(); dnsIP == nil {
+			log.Fatalf("dns: need an IPv4 address, got %q", *dnsStr)
+		}
+	}
+
+	// Routing, such as it is: the -host subnet is on the link, and
+	// everything else goes to one gateway, by default the kernel side.
+	var subnet *net.IPNet
+	gw := net.ParseIP(*gwStr)
+	if *hostCIDR != "" {
+		hostIP, n, err := net.ParseCIDR(*hostCIDR)
+		if err != nil {
+			log.Fatalf("host: %v", err)
+		}
+		subnet = n
+		if gw == nil {
+			gw = hostIP
+		}
+	}
+
 	// Open the TAP. From here on, every Read is one Ethernet frame the
 	// kernel sent toward our side of the virtual cable.
 	dev, err := tap.Open(*ifName)
@@ -156,16 +199,20 @@ func main() {
 	// Startup banner, including a ready-to-paste command to try the
 	// chosen app from another shell.
 	log.Printf("TAP %s open — we are %s / %s (host %s)", dev.Name(), mac, ip.To4(), *hostCIDR)
-	if *dumpOnly {
+	switch {
+	case *dumpOnly:
 		log.Printf("dump-only mode: no protocol replies")
-	} else {
+	case client:
+		log.Printf("client mode: ARP, ICMP echo, outgoing TCP via gateway %s, DNS via %s (our UDP)", gw, dnsIP)
+	default:
 		log.Printf("protocols: ARP, ICMP echo, %s :%d", appDesc, port)
 	}
-	switch *appName {
-	case "http", "http-go":
+	switch {
+	case client:
+	case *appName == "http" || *appName == "http-go":
 		log.Printf("from another shell: curl http://%s/   or   printf 'GET / HTTP/1.0\\r\\n\\r\\n' | nc %s %d",
 			ip.To4(), ip.To4(), port)
-	case "https", "https-go", "https-diy":
+	case *appName == "https" || *appName == "https-go" || *appName == "https-diy":
 		// -k because the certificate is self-signed. The TLS 1.2 cap is
 		// required for mintls, which speaks nothing newer.
 		log.Printf("from another shell: curl -k --tlsv1.2 --tls-max 1.2 https://%s/", ip.To4())
@@ -173,22 +220,39 @@ func main() {
 		log.Printf("from another shell: ping %s   or   nc %s %d", ip.To4(), ip.To4(), port)
 	}
 
+	// In client mode stdout carries the received bytes, so dumps move to
+	// stderr next to the log.
+	dumpOut := io.Writer(os.Stdout)
+	if client {
+		dumpOut = os.Stderr
+	}
 	st := stack.New(dev, stack.Config{
 		MAC:     mac,
 		IP:      ip.To4(),
+		Subnet:  subnet,
+		Gateway: gw,
+		DNS:     dnsIP,
 		Dump:    *doDump,
-		DumpOut: os.Stdout,
+		DumpOut: dumpOut,
 		Capture: rec,
 		Logger:  log.Default(),
 	})
 
-	// The same call a kernel program makes with net.Listen, but on our TCP.
-	ln := st.TCP().Listen(port)
-	go func() {
-		if err := serve(ln); err != nil && !errors.Is(err, net.ErrClosed) {
-			log.Printf("%s: %v", *appName, err)
-		}
-	}()
+	clientDone := make(chan error, 1)
+	switch {
+	case *dialAddr != "":
+		go func() { clientDone <- runDial(st, *dialAddr) }()
+	case *getURL != "":
+		go func() { clientDone <- runGet(st, *getURL) }()
+	default:
+		// The same call a kernel program makes with net.Listen, but on our TCP.
+		ln := st.TCP().Listen(port)
+		go func() {
+			if err := serve(ln); err != nil && !errors.Is(err, net.ErrClosed) {
+				log.Printf("%s: %v", *appName, err)
+			}
+		}()
+	}
 
 	// Ctrl-C (SIGINT) or SIGTERM ends the program cleanly so the deferred
 	// Close calls run and the capture files are complete.
@@ -250,7 +314,55 @@ func main() {
 		log.Printf("shutting down")
 	case err := <-errCh:
 		log.Fatalf("read: %v", err)
+	case err := <-clientDone:
+		if err != nil {
+			log.Printf("client: %v", err)
+			exitCode = 1
+		}
 	}
+}
+
+// runDial is nc on our TCP: stdin goes to the peer, and whatever the peer
+// sends goes to stdout until it closes. There is no half-close, so when
+// stdin ends we keep reading until the peer hangs up.
+func runDial(st *stack.Stack, addr string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	c, err := st.DialContext(ctx, "tcp", addr)
+	if err != nil {
+		return err
+	}
+	defer c.Close()
+	log.Printf("connected %s → %s", c.LocalAddr(), c.RemoteAddr())
+	go func() { _, _ = io.Copy(c, os.Stdin) }()
+	_, err = io.Copy(os.Stdout, c)
+	return err
+}
+
+// runGet fetches url with Go's own HTTP client. The only change from a
+// normal http.Get is the Transport's DialContext: every connection it
+// opens, plain or TLS, rides on our TCP instead of the kernel's.
+func runGet(st *stack.Stack, url string) error {
+	hc := &http.Client{
+		Timeout: 20 * time.Second,
+		Transport: &http.Transport{
+			DialContext:       st.DialContext,
+			DisableKeepAlives: true,
+		},
+	}
+	resp, err := hc.Get(url)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	fmt.Fprintf(os.Stderr, "%s %s\n", resp.Proto, resp.Status)
+	for k, vs := range resp.Header {
+		for _, v := range vs {
+			fmt.Fprintf(os.Stderr, "%s: %s\n", k, v)
+		}
+	}
+	_, err = io.Copy(os.Stdout, resp.Body)
+	return err
 }
 
 // serveEcho writes every byte it reads straight back, one goroutine per

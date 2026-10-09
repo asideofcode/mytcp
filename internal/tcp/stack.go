@@ -1,35 +1,40 @@
-// Package tcp is the transport layer of the stack: a small, server-only TCP.
+// Package tcp is the transport layer of the stack: a small TCP.
 //
-// Below it, the IPv4 layer hands us segments (Parse turns an IPv4 payload
+// Below it, the IPv4 layer hands us segments (Decode turns an IPv4 payload
 // into a Segment, and Stack.Handle processes it). Above it, applications
 // see what a kernel socket gives them: Stack.Listen returns a net.Listener
-// (Listener), and each accepted connection is a net.Conn (StreamConn).
+// (Listener), Stack.Dial connects out, and each connection is a net.Conn
+// (StreamConn).
 //
-// It does the three-way handshake (passive open only), in-order delivery,
-// ACKs, timer-based retransmission, and both close sequences. It
-// deliberately leaves out: active open (connecting out), congestion
-// control, send-side flow control, SACK, window scaling and all other
-// options, out-of-order reassembly, TIME_WAIT, and RTT estimation.
+// It does the three-way handshake both ways, in-order delivery, ACKs,
+// timer-based retransmission, and both close sequences. It deliberately
+// leaves out: congestion control, send-side flow control, SACK, window
+// scaling and all other options (so no MSS either), out-of-order
+// reassembly, TIME_WAIT, and RTT estimation.
 package tcp
 
 import (
+	"context"
 	"fmt"
 	"log"
+	"math/rand/v2"
 	"net"
 	"sync"
+	"syscall"
 	"time"
 )
 
-// State is a TCP connection state (RFC 9293 section 3.3.2). This
-// implementation only opens passively, so it uses the server-side subset:
+// State is a TCP connection state (RFC 9293 section 3.3.2):
 //
-//	              LISTEN   (per port, not a per-connection state)
-//	                |
-//	                | recv SYN, send SYN+ACK
-//	                v
-//	          SYN_RECEIVED
-//	                |
-//	                | recv ACK of our SYN
+//	LISTEN (per port)              Dial
+//	    |                            |
+//	    | recv SYN,                  | send SYN
+//	    | send SYN+ACK               v
+//	    v                        SYN_SENT
+//	SYN_RECEIVED                     |
+//	    |                            | recv SYN+ACK,
+//	    | recv ACK of our SYN        | send ACK
+//	    +-----------+----------------+
 //	                v
 //	           ESTABLISHED
 //	                |
@@ -57,8 +62,8 @@ import (
 //	FIN_WAIT_1 --recv FIN that also ACKs our FIN--> CLOSED
 //	FIN_WAIT_1 --recv FIN, ours not yet ACKed-----> LAST_ACK  (simultaneous close)
 //
-// Differences from the full RFC diagram: there is no SYN_SENT (we never
-// connect out), no TIME_WAIT (the connection is forgotten as soon as the
+// Differences from the full RFC diagram: no simultaneous open (a bare
+// SYN in SYN_SENT is ignored), no TIME_WAIT (the connection is forgotten as soon as the
 // final ACK is sent), and no separate CLOSING state (a simultaneous close
 // reuses LAST_ACK, which waits for the same thing: the ACK of our FIN).
 // A RST in any state jumps straight to CLOSED.
@@ -66,9 +71,10 @@ type State int
 
 // The connection states. StateListen is listed for completeness, but
 // listening is tracked per port in Stack.listen; a Conn is created
-// directly in StateSynReceived.
+// directly in StateSynReceived or StateSynSent.
 const (
-	StateListen State = iota
+	StateListen  State = iota
+	StateSynSent       // Dial sent our SYN; waiting for SYN+ACK
 	StateSynReceived
 	StateEstablished
 	StateCloseWait // peer sent FIN; waiting for our app to close
@@ -83,6 +89,8 @@ func (s State) String() string {
 	switch s {
 	case StateListen:
 		return "LISTEN"
+	case StateSynSent:
+		return "SYN_SENT"
 	case StateSynReceived:
 		return "SYN_RECEIVED"
 	case StateEstablished:
@@ -125,11 +133,13 @@ type outstanding struct {
 	retries   int
 }
 
-// Emitter sends a TCP segment down to IPv4/Ethernet. The stack package
-// implements it: it marshals the segment, wraps it in an IPv4 packet and
-// an Ethernet frame, and writes it to the TAP device.
+// Emitter is TCP's way down to IPv4/Ethernet. The stack package
+// implements it. SendTCP encodes a segment, wraps it in an IPv4 packet and
+// an Ethernet frame, and writes it to the TAP device. Resolve finds the
+// MAC to send to when we start a connection and have no frame to reply to.
 type Emitter interface {
 	SendTCP(dstMAC net.HardwareAddr, dstIP net.IP, seg Segment) error
+	Resolve(ctx context.Context, ip net.IP) (net.HardwareAddr, error)
 }
 
 // Stack owns the listening ports and all live connections.
@@ -146,6 +156,7 @@ type Stack struct {
 	conns    map[fourTuple]*Conn
 	emit     Emitter
 	iss      uint32 // initial sequence number for the next connection
+	nextPort uint32 // where Dial starts looking for a free ephemeral port
 	rto      time.Duration
 	maxRetry int
 	now      func() time.Time // replaceable clock, for tests
@@ -178,6 +189,8 @@ type Conn struct {
 
 	outq   []outstanding // unacked segments, oldest first
 	stream *StreamConn   // the app's net.Conn; set at ESTABLISHED
+
+	dialDone chan error // Dial only: the handshake's outcome, sent once
 }
 
 // NewStack creates a TCP layer for ourIP. Segments go out through emit.
@@ -201,6 +214,11 @@ func NewStack(ourIP net.IP, emit Emitter, logger *log.Logger) *Stack {
 		// neither.
 		rto:      500 * time.Millisecond,
 		maxRetry: 5,
+		// Start the ephemeral port search somewhere random (RFC 6056).
+		// Starting at 49152 every run would reuse the same 4-tuple each
+		// time, and a NAT that still remembers the last run's flow
+		// silently drops the new one.
+		nextPort: rand.Uint32(),
 		now:      time.Now,
 		log:      logger,
 	}
@@ -244,6 +262,11 @@ func (s *Stack) handleLocked(srcMAC net.HardwareAddr, srcIP net.IP, seg Segment,
 
 	c, ok := s.conns[key]
 	if !ok {
+		// A RST for a connection we already dropped needs no answer, and
+		// answering it with a RST could ping-pong forever.
+		if seg.Has(FlagRST) {
+			return nil
+		}
 		// No connection yet. Nobody on this port: RST tells the peer
 		// "connection refused" instead of letting it time out.
 		if _, listening := s.listen[seg.DstPort]; !listening {
@@ -328,6 +351,15 @@ func (s *Stack) driveConnLocked(c *Conn, seg Segment, accepted **StreamConn) err
 	// A reset aborts the connection immediately in every state. The RST's
 	// sequence number is not checked.
 	if seg.Has(FlagRST) {
+		if c.state == StateSynSent {
+			// A RST that acks our SYN means nobody listens there. Any
+			// other RST could be stale and is ignored.
+			if seg.Has(FlagACK) && seg.Ack == c.sndNxt {
+				s.log.Printf("tcp: conn %v refused", c.tuple)
+				s.failDialLocked(c, syscall.ECONNREFUSED)
+			}
+			return nil
+		}
 		s.log.Printf("tcp: conn %v RST → CLOSED", c.tuple)
 		s.destroyLocked(c)
 		return nil
@@ -346,6 +378,20 @@ func (s *Stack) driveConnLocked(c *Conn, seg Segment, accepted **StreamConn) err
 	}
 
 	switch c.state {
+	case StateSynSent:
+		// Step two of our handshake: SYN+ACK that acks our SYN. Our ACK
+		// back is step three, and Dial returns.
+		if seg.Has(FlagSYN) && seg.Has(FlagACK) && seg.Ack == c.sndNxt {
+			c.rcvNxt = seg.Seq + 1
+			c.state = StateEstablished
+			c.stream = newStreamConn(s, c)
+			s.log.Printf("tcp: conn %v ESTABLISHED (dialed)", c.tuple)
+			err := s.sendCtrlLocked(c, FlagACK, nil)
+			c.dialDone <- nil
+			return err
+		}
+		return nil
+
 	case StateSynReceived:
 		// Step three of the handshake: a plain ACK that acknowledges our
 		// SYN, i.e. ack == ISN+1 == sndNxt.
@@ -641,11 +687,18 @@ func (s *Stack) sendRSTLocked(dstMAC net.HardwareAddr, dstIP net.IP, in Segment)
 // an ACK since it was last sent, it is sent again unchanged. The timeout
 // stays fixed (no exponential backoff). After maxRetry resends the
 // segment is no longer retransmitted, but the connection is not closed
-// and the segment stays in the queue.
+// and the segment stays in the queue. The exception is a Dial's SYN: then
+// Dial fails with a timeout.
 func (s *Stack) Tick() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	now := s.now()
+	var timedOut []*Conn
+	defer func() {
+		for _, c := range timedOut {
+			s.failDialLocked(c, syscall.ETIMEDOUT)
+		}
+	}()
 	for _, c := range s.conns {
 		for i := range c.outq {
 			o := &c.outq[i]
@@ -654,6 +707,10 @@ func (s *Stack) Tick() {
 			}
 			if o.retries >= s.maxRetry {
 				s.log.Printf("tcp: give up retransmit on %v after %d tries", c.tuple, o.retries)
+				if c.state == StateSynSent {
+					timedOut = append(timedOut, c)
+					break
+				}
 				continue
 			}
 			o.retries++

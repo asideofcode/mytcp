@@ -7,8 +7,9 @@
 // see exactly which bytes belong to which header.
 //
 // It only reads; it never changes or answers anything. It decodes the same
-// protocols the stack does, plus a best-effort look at HTTP text. IPv6 and
-// UDP are named but not decoded, and TLS payload is shown as raw bytes.
+// protocols the stack does, plus a best-effort look at HTTP text and DNS
+// on port 53. IPv6 is named but not decoded, and TLS payload is shown as
+// raw bytes.
 package dump
 
 import (
@@ -17,11 +18,13 @@ import (
 	"strings"
 
 	"github.com/asideofcode/mytcp/internal/arp"
+	"github.com/asideofcode/mytcp/internal/dns"
 	"github.com/asideofcode/mytcp/internal/eth"
 	"github.com/asideofcode/mytcp/internal/hexdump"
 	"github.com/asideofcode/mytcp/internal/icmp"
 	"github.com/asideofcode/mytcp/internal/ip4"
 	"github.com/asideofcode/mytcp/internal/tcp"
+	"github.com/asideofcode/mytcp/internal/udp"
 )
 
 // Frame writes a full-frame hex dump, then a layered onion decode, to w.
@@ -30,7 +33,7 @@ import (
 // Each layer prints only its own header bytes, then hands its payload to
 // the next layer's dumper. The branching follows the same header fields
 // the stack uses: EtherType picks ARP or IPv4, and the IPv4 Protocol
-// field picks ICMP or TCP. A parse error stops the decode at that layer
+// field picks ICMP or TCP. A decode error stops peeling at that layer
 // and prints the undecoded bytes instead.
 func Frame(w io.Writer, dir string, b []byte) {
 	fmt.Fprintf(w, "%s %d bytes\n", dir, len(b))
@@ -42,9 +45,9 @@ func Frame(w io.Writer, dir string, b []byte) {
 	hexdump.Dump(w, "  ", b)
 	fmt.Fprintf(w, "  layers\n")
 
-	f, err := eth.Parse(b)
+	f, err := eth.Decode(b)
 	if err != nil {
-		fmt.Fprintf(w, "  L2 Ethernet  <parse error: %v>\n", err)
+		fmt.Fprintf(w, "  L2 Ethernet  <decode error: %v>\n", err)
 		fmt.Fprintln(w)
 		return
 	}
@@ -74,9 +77,9 @@ func Frame(w io.Writer, dir string, b []byte) {
 // dumpARP prints an ARP packet as a sentence: a request reads "who has
 // TPA, tell SPA", and a reply reads "SPA is at SHA".
 func dumpARP(w io.Writer, b []byte) {
-	p, err := arp.Parse(b)
+	p, err := arp.Decode(b)
 	if err != nil {
-		fmt.Fprintf(w, "  L3 ARP      <parse error: %v>\n", err)
+		fmt.Fprintf(w, "  L3 ARP      <decode error: %v>\n", err)
 		hexdump.Dump(w, "             ", b)
 		return
 	}
@@ -97,9 +100,9 @@ func dumpARP(w io.Writer, b []byte) {
 // dumpIPv4 prints the IPv4 header fields that matter for the demo, the
 // header bytes on their own, then dispatches on the Protocol field.
 func dumpIPv4(w io.Writer, b []byte) {
-	pkt, err := ip4.Parse(b)
+	pkt, err := ip4.Decode(b)
 	if err != nil {
-		fmt.Fprintf(w, "  L3 IPv4     <parse error: %v>\n", err)
+		fmt.Fprintf(w, "  L3 IPv4     <decode error: %v>\n", err)
 		hexdump.Dump(w, "             ", b)
 		return
 	}
@@ -128,8 +131,7 @@ func dumpIPv4(w io.Writer, b []byte) {
 	case ip4.ProtoTCP:
 		dumpTCP(w, pkt.Payload)
 	case ip4.ProtoUDP:
-		fmt.Fprintf(w, "  L4 UDP      (not implemented) %d bytes\n", len(pkt.Payload))
-		hexdump.Dump(w, "             ", pkt.Payload)
+		dumpUDP(w, pkt.Payload)
 	default:
 		fmt.Fprintf(w, "  L4 ?        proto=%s %d bytes\n", ip4.ProtoName(pkt.Proto), len(pkt.Payload))
 		hexdump.Dump(w, "             ", pkt.Payload)
@@ -141,9 +143,9 @@ func dumpIPv4(w io.Writer, b []byte) {
 // than echo request and reply, the id and seq fields are just whatever
 // bytes sit at those offsets.
 func dumpICMP(w io.Writer, b []byte) {
-	echo, err := icmp.ParseEcho(b)
+	echo, err := icmp.Decode(b)
 	if err != nil {
-		fmt.Fprintf(w, "  L4 ICMP     <parse error: %v>\n", err)
+		fmt.Fprintf(w, "  L4 ICMP     <decode error: %v>\n", err)
 		hexdump.Dump(w, "             ", b)
 		return
 	}
@@ -173,9 +175,9 @@ func dumpICMP(w io.Writer, b []byte) {
 // window, and header length, then its payload. Payload that starts like
 // HTTP gets one more layer of decoding.
 func dumpTCP(w io.Writer, b []byte) {
-	seg, err := tcp.Parse(b)
+	seg, err := tcp.Decode(b)
 	if err != nil {
-		fmt.Fprintf(w, "  L4 TCP      <parse error: %v>\n", err)
+		fmt.Fprintf(w, "  L4 TCP      <decode error: %v>\n", err)
 		hexdump.Dump(w, "             ", b)
 		return
 	}
@@ -199,6 +201,28 @@ func dumpTCP(w io.Writer, b []byte) {
 	}
 	fmt.Fprintf(w, "  payload     %q\n", truncate(seg.Payload, 48))
 	hexdump.Dump(w, "             ", seg.Payload)
+}
+
+// dumpUDP prints a UDP datagram's ports and length, then its payload.
+// Either port being 53 means DNS, which gets one more layer.
+func dumpUDP(w io.Writer, b []byte) {
+	d, err := udp.Decode(b)
+	if err != nil {
+		fmt.Fprintf(w, "  L4 UDP      <decode error: %v>\n", err)
+		hexdump.Dump(w, "             ", b)
+		return
+	}
+	fmt.Fprintf(w, "  L4 UDP      %d → %d  payload=%dB\n", d.SrcPort, d.DstPort, len(d.Payload))
+	hexdump.Dump(w, "             ", b[:udp.HeaderLen])
+	if len(d.Payload) == 0 {
+		return
+	}
+	if d.SrcPort == 53 || d.DstPort == 53 {
+		fmt.Fprintf(w, "  L7 DNS      %s\n", dns.Describe(d.Payload))
+	} else {
+		fmt.Fprintf(w, "  payload     %q\n", truncate(d.Payload, 48))
+	}
+	hexdump.Dump(w, "             ", d.Payload)
 }
 
 // looksLikeHTTP guesses whether a TCP payload is the start of an HTTP/1

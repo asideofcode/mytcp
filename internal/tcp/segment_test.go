@@ -19,8 +19,8 @@ func TestSegmentChecksum(t *testing.T) {
 		Flags:   tcp.FlagSYN | tcp.FlagACK,
 		Window:  65535,
 	}
-	raw := seg.Marshal(src, dst)
-	got, err := tcp.Parse(raw)
+	raw := seg.Encode(src, dst)
+	got, err := tcp.Decode(raw)
 	if err != nil {
 		t.Fatal(err)
 	}

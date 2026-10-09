@@ -35,7 +35,7 @@ type Echo struct {
 	Payload []byte // arbitrary data; a reply must echo it back unchanged
 }
 
-// ParseEcho decodes an ICMP echo message. The on-the-wire layout is:
+// Decode decodes an ICMP echo message. The on-the-wire layout is:
 //
 //	0      1      2          4          6          8
 //	+------+------+----------+----------+----------+-------------
@@ -45,7 +45,7 @@ type Echo struct {
 // Multi-byte fields are big-endian (network byte order). The checksum is
 // not verified, and the type is not checked: the caller decides whether
 // this really is an echo request.
-func ParseEcho(b []byte) (Echo, error) {
+func Decode(b []byte) (Echo, error) {
 	if len(b) < HeaderLen {
 		return Echo{}, fmt.Errorf("icmp: too short (%d)", len(b))
 	}
@@ -58,9 +58,9 @@ func ParseEcho(b []byte) (Echo, error) {
 	}, nil
 }
 
-// Marshal encodes the message into wire bytes, using the same layout as
-// ParseEcho, and fills in the checksum.
-func (e Echo) Marshal() []byte {
+// Encode encodes the message into wire bytes, using the same layout as
+// Decode, and fills in the checksum.
+func (e Echo) Encode() []byte {
 	out := make([]byte, HeaderLen+len(e.Payload))
 	out[0] = e.Type                             // byte 0: type
 	out[1] = e.Code                             // byte 1: code
@@ -77,7 +77,7 @@ func (e Echo) Marshal() []byte {
 // ReplyFrom turns an echo request into an echo reply.
 // The type becomes echo reply and the code is 0. ID, sequence number and
 // payload are copied unchanged, which is how ping matches the reply to its
-// request. The checksum is recomputed later, by Marshal.
+// request. The checksum is recomputed later, by Encode.
 func ReplyFrom(req Echo) Echo {
 	return Echo{
 		Type:    TypeEchoReply,

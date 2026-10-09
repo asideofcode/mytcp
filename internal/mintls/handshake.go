@@ -32,13 +32,13 @@ func uint24(b []byte) int {
 	return int(b[0])<<16 | int(b[1])<<8 | int(b[2])
 }
 
-// marshalHandshake wraps body in the 4-byte handshake header that every
+// encodeHandshake wraps body in the 4-byte handshake header that every
 // handshake message starts with (RFC 5246 section 7.4):
 //
 //	msg_type(1) length(3) body(length)
 //
 // These exact bytes are what go into the transcript hash.
-func marshalHandshake(typ byte, body []byte) []byte {
+func encodeHandshake(typ byte, body []byte) []byte {
 	out := make([]byte, 4+len(body))
 	out[0] = typ
 	putUint24(out[1:4], len(body))
@@ -49,12 +49,12 @@ func marshalHandshake(typ byte, body []byte) []byte {
 // clientHello holds the ClientHello fields this server cares about.
 type clientHello struct {
 	random       []byte   // 32 bytes chosen by the client; mixed into every key
-	sessionID    []byte   // parsed but unused; we never resume sessions
+	sessionID    []byte   // decoded but unused; we never resume sessions
 	cipherSuites []uint16 // everything the client offered
 	hasOurCipher bool     // true if 0xC02B is in cipherSuites
 }
 
-// parseClientHello parses a ClientHello body (the bytes after the 4-byte
+// decodeClientHello decodes a ClientHello body (the bytes after the 4-byte
 // handshake header). The layout (RFC 5246 section 7.4.1.2) is:
 //
 //	client_version(2)
@@ -66,7 +66,7 @@ type clientHello struct {
 //
 // Before slicing with a length field, we check it against the bytes that are
 // left, so a lying length returns an error instead of reading past the end.
-func parseClientHello(body []byte) (*clientHello, error) {
+func decodeClientHello(body []byte) (*clientHello, error) {
 	// client_version(2) + random(32) + the session_id length byte(1)
 	if len(body) < 35 {
 		return nil, fmt.Errorf("mintls: ClientHello too short")
@@ -119,7 +119,7 @@ func parseClientHello(body []byte) (*clientHello, error) {
 	return &clientHello{random: random, sessionID: sid, cipherSuites: suites, hasOurCipher: has}, nil
 }
 
-// marshalServerHello builds the ServerHello message, which fixes the choices
+// encodeServerHello builds the ServerHello message, which fixes the choices
 // for this connection (RFC 5246 section 7.4.1.3):
 //
 //	server_version(2)=0x0303
@@ -130,7 +130,7 @@ func parseClientHello(body []byte) (*clientHello, error) {
 //	extensions_len(2)     extensions
 //
 // It returns the full message including the 4-byte handshake header.
-func marshalServerHello(random, sessionID []byte) []byte {
+func encodeServerHello(random, sessionID []byte) []byte {
 	body := make([]byte, 0, 2+32+1+len(sessionID)+2+1+2+32)
 	body = append(body, byte(VersionTLS12>>8), byte(VersionTLS12&0xff))
 	body = append(body, random...)
@@ -149,17 +149,17 @@ func marshalServerHello(random, sessionID []byte) []byte {
 	}
 	body = append(body, byte(len(ext)>>8), byte(len(ext)))
 	body = append(body, ext...)
-	return marshalHandshake(hsServerHello, body)
+	return encodeHandshake(hsServerHello, body)
 }
 
-// marshalCertificate builds the Certificate message (RFC 5246 section 7.4.2).
+// encodeCertificate builds the Certificate message (RFC 5246 section 7.4.2).
 // It is a list inside a list, both with 3-byte length prefixes:
 //
 //	certificate_list_len(3)
 //	  cert_len(3) cert(DER)     leaf first
 //	  cert_len(3) cert(DER)     then any intermediates
 //	  ...
-func marshalCertificate(ders [][]byte) []byte {
+func encodeCertificate(ders [][]byte) []byte {
 	var certsLen int
 	for _, d := range ders {
 		certsLen += 3 + len(d) // each entry carries its own 3-byte length
@@ -173,16 +173,16 @@ func marshalCertificate(ders [][]byte) []byte {
 		copy(body[off:], d)
 		off += len(d)
 	}
-	return marshalHandshake(hsCertificate, body)
+	return encodeHandshake(hsCertificate, body)
 }
 
-// marshalServerHelloDone builds ServerHelloDone (RFC 5246 section 7.4.5):
+// encodeServerHelloDone builds ServerHelloDone (RFC 5246 section 7.4.5):
 // just the 4-byte header with an empty body, meaning "the client may answer now".
-func marshalServerHelloDone() []byte {
-	return marshalHandshake(hsServerHelloDone, nil)
+func encodeServerHelloDone() []byte {
+	return encodeHandshake(hsServerHelloDone, nil)
 }
 
-// marshalServerKeyExchange builds the ServerKeyExchange message for ECDHE
+// encodeServerKeyExchange builds the ServerKeyExchange message for ECDHE
 // (RFC 8422 section 5.4). It carries our ephemeral public key, signed with the
 // certificate's private key:
 //
@@ -198,7 +198,7 @@ func marshalServerHelloDone() []byte {
 // is the first four fields above. Signing the ephemeral key proves that the
 // holder of the certificate key chose it. Including both randoms binds the
 // signature to this one handshake, so an attacker cannot replay it later.
-func marshalServerKeyExchange(clientRandom, serverRandom, ecdhePub []byte, priv *ecdsa.PrivateKey) ([]byte, error) {
+func encodeServerKeyExchange(clientRandom, serverRandom, ecdhePub []byte, priv *ecdsa.PrivateKey) ([]byte, error) {
 	params := make([]byte, 0, 4+len(ecdhePub))
 	params = append(params, 3) // named_curve
 	params = append(params, byte(curvesecp256r1>>8), byte(curvesecp256r1))
@@ -227,7 +227,7 @@ func marshalServerKeyExchange(clientRandom, serverRandom, ecdhePub []byte, priv 
 	body = append(body, 4, 3) // sha256, ecdsa
 	body = append(body, byte(len(sigASN1)>>8), byte(len(sigASN1)))
 	body = append(body, sigASN1...)
-	return marshalHandshake(hsServerKeyExchange, body), nil
+	return encodeHandshake(hsServerKeyExchange, body), nil
 }
 
 // asn1FromRS encodes an ECDSA signature (the two numbers r and s) in the DER
@@ -264,13 +264,13 @@ func asn1FromRS(r, s *big.Int) ([]byte, error) {
 	return out, nil
 }
 
-// parseClientKeyExchange extracts the client's ephemeral ECDH public key from
+// decodeClientKeyExchange extracts the client's ephemeral ECDH public key from
 // a ClientKeyExchange body (RFC 8422 section 5.7):
 //
 //	pubkey_len(1) pubkey(pubkey_len)     65 bytes for an uncompressed P-256 point
 //
 // The caller checks that the bytes are a valid point.
-func parseClientKeyExchange(body []byte) ([]byte, error) {
+func decodeClientKeyExchange(body []byte) ([]byte, error) {
 	if len(body) < 1 {
 		return nil, fmt.Errorf("mintls: empty ClientKeyExchange")
 	}
@@ -281,12 +281,12 @@ func parseClientKeyExchange(body []byte) ([]byte, error) {
 	return append([]byte{}, body[1:1+n]...), nil
 }
 
-// marshalFinished builds a Finished message (RFC 5246 section 7.4.9). Its body
+// encodeFinished builds a Finished message (RFC 5246 section 7.4.9). Its body
 // is only the 12-byte verify_data, with no extra length prefix:
 //
 //	msg_type(1)=20 length(3)=12 verify_data(12)
-func marshalFinished(verify []byte) []byte {
-	return marshalHandshake(hsFinished, verify)
+func encodeFinished(verify []byte) []byte {
+	return encodeHandshake(hsFinished, verify)
 }
 
 // SelfSigned creates a fresh ECDSA P-256 key and a self-signed leaf

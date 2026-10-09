@@ -120,10 +120,10 @@ That is not the claim.
 The claim is about an **onion-shaped protocol habit**:
 
 > Each layer is a **header + payload**.  
-> Each layer has a **struct** (or message type) with **Parse / Marshal**  
+> Each layer has a **struct** (or message type) with **Decode / Encode**  
 > and a **small set of operations**.  
 > The payload of layer *N* is the whole message of layer *N+1*.  
-> Demux is usually a type field that selects the next parser.
+> Demux is usually a type field that selects the next decoder.
 
 That is the onion. `internal/dump` literally peels it for debugging;
 the stack peels it for real.
@@ -134,21 +134,21 @@ Look at the leaf packages — they rhyme on purpose:
 
 | Package | Type | Decode | Encode | Nesting / demux |
 |---------|------|--------|--------|-----------------|
-| `eth` | `Frame` | `Parse` | `Marshal` | `Type` → ARP or IPv4; `Payload` |
-| `arp` | `Packet` | `Parse` | `Marshal` | Fixed L2.5 message (no further nest) |
-| `ip4` | `Packet` | `Parse` | `Marshal` | `Proto` → ICMP/TCP; `Payload` |
-| `icmp` | `Echo` | `ParseEcho` | `Marshal` | Reply is a tiny transform |
-| `tcp` | `Segment` | `Parse` | `Marshal` | Ports + flags; `Payload` is the stream |
-| `mintls` | records / HS msgs | read/parse | write/marshal | ContentType → handshake / app data |
-| `http1` | buffered request | parse lines | format response | App bytes on the stream |
+| `eth` | `Frame` | `Decode` | `Encode` | `Type` → ARP or IPv4; `Payload` |
+| `arp` | `Packet` | `Decode` | `Encode` | Fixed L2.5 message (no further nest) |
+| `ip4` | `Packet` | `Decode` | `Encode` | `Proto` → ICMP/TCP; `Payload` |
+| `icmp` | `Echo` | `Decode` | `Encode` | Reply is a tiny transform |
+| `tcp` | `Segment` | `Decode` | `Encode` | Ports + flags; `Payload` is the stream |
+| `mintls` | records / HS msgs | read/decode | write/encode | ContentType → handshake / app data |
+| `http1` | buffered request | decode lines | format response | App bytes on the stream |
 
 Almost every layer:
 
 1. **Names the header fields** in a struct.
-2. **Parses** opaque bytes → struct (validate length, version, etc.).
-3. **Marshals** struct → bytes (often computing checksums on the way out).
+2. **Decodes** opaque bytes → struct (validate length, version, etc.).
+3. **Encodes** struct → bytes (often computing checksums on the way out).
 4. Treats **`Payload` as the next onion layer** (or as opaque app data).
-5. Exposes only a **limited verb set**: parse, marshal, maybe
+5. Exposes only a **limited verb set**: decode, encode, maybe
    “reply to this” (ARP reply, ICMP echo reply), maybe
    “handle this segment” (TCP). Not a kitchen-sink API.
 
@@ -159,7 +159,7 @@ pipe and only then imposes request/response framing.
 
 ### 4.2 Why the rhyme matters for reasoning
 
-Once you see Parse/Marshal + payload + type-field demux, the stack stops
+Once you see Decode/Encode + payload + type-field demux, the stack stops
 being a tower of unrelated trivia:
 
 - **Learning path** — implement Ethernet before ARP replies; IP before
@@ -185,8 +185,8 @@ A few things sit beside the peel-and-wrap habit:
 - **`tcp.Listener` / `StreamConn`** — `net.Listener` / `net.Conn` over
   userspace TCP: adapters *above* segments. They consume the onion’s top
   payload as a byte stream.
-- **`stack` demux** — glue that calls `eth.Parse`, switches on type,
-  calls the next `Parse`. The onion lives in the protocols; the stack
+- **`stack` demux** — glue that calls `eth.Decode`, switches on type,
+  calls the next `Decode`. The onion lives in the protocols; the stack
   is the peeler.
 
 Keeping those distinct helps: protocols are onions; the runtime is what
@@ -266,7 +266,7 @@ Putting the pieces together:
 3. **Humility** — we stand on giants; aggregates beat lone genius myths.
 4. **Foresight** — seams let the Internet roll out *and* let later tech
    (or optional TLS) slot in.
-5. **Onion interface** — Parse/Marshal structs, limited ops, payload
+5. **Onion interface** — Decode/Encode structs, limited ops, payload
    nesting; the rhyme that makes the stack learnable and extensible.
 
 The presentation can animate an empty layer board filling in. This
@@ -290,7 +290,7 @@ author but can finally see.
 - What would an SRD-style toy look like here: multipath and
   out-of-order reliable datagrams over UDP, beside `tcp`?
 - Should `mytcp` ever introduce a formal Go `interface` for
-  `Parse`/`Marshal`, or would that fake unity the RFCs never required?
+  `Decode`/`Encode`, or would that fake unity the RFCs never required?
 
 No need to answer these for the talk. They are compass headings for
 later reasoning.

@@ -21,8 +21,8 @@ func TestReplyFor(t *testing.T) {
 	if rep.Op != arp.OpReply {
 		t.Fatalf("op=%d", rep.Op)
 	}
-	raw := rep.Marshal()
-	got, err := arp.Parse(raw)
+	raw := rep.Encode()
+	got, err := arp.Decode(raw)
 	if err != nil {
 		t.Fatal(err)
 	}

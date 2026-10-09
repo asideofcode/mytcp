@@ -4,10 +4,12 @@
 // ARP answers the question "which MAC address owns this IP address?".
 // It rides directly inside an Ethernet frame (EtherType 0x0806) and has no
 // layer above it. The kernel on the other side of the TAP device asks who
-// owns our IP; this package parses that request and builds the reply.
+// owns our IP; this package decodes that request and builds the reply. When
+// we start a connection ourselves, it builds our own request. The cache of
+// learned addresses lives in the stack package.
 //
 // Deliberately left out: any hardware/protocol pair other than
-// Ethernet/IPv4, a cache of learned addresses, and gratuitous ARP.
+// Ethernet/IPv4, and gratuitous ARP.
 package arp
 
 import (
@@ -43,7 +45,7 @@ type Packet struct {
 	TPA net.IP           // target IP (in a request: the IP being looked up)
 }
 
-// Parse decodes an ARP message. The on-the-wire layout for Ethernet/IPv4 is:
+// Decode decodes an ARP message. The on-the-wire layout for Ethernet/IPv4 is:
 //
 //	0      2      4    5    6      8          14       18         24       28
 //	+------+------+----+----+------+----------+--------+----------+--------+
@@ -54,7 +56,7 @@ type Packet struct {
 // Multi-byte fields are big-endian (network byte order). Addresses are
 // copied out of b. Messages for any other hardware/protocol combination
 // are rejected.
-func Parse(b []byte) (Packet, error) {
+func Decode(b []byte) (Packet, error) {
 	if len(b) < HeaderLen {
 		return Packet{}, fmt.Errorf("arp: too short (%d)", len(b))
 	}
@@ -75,9 +77,9 @@ func Parse(b []byte) (Packet, error) {
 	}, nil
 }
 
-// Marshal encodes the message into its 28 wire bytes, using the same layout
-// as Parse. The hardware and protocol fields are always Ethernet/IPv4.
-func (p Packet) Marshal() []byte {
+// Encode encodes the message into its 28 wire bytes, using the same layout
+// as Decode. The hardware and protocol fields are always Ethernet/IPv4.
+func (p Packet) Encode() []byte {
 	out := make([]byte, HeaderLen)
 	binary.BigEndian.PutUint16(out[0:2], HWEther)   // bytes 0-1: hardware type = Ethernet
 	binary.BigEndian.PutUint16(out[2:4], ProtoIPv4) // bytes 2-3: protocol type = IPv4
@@ -103,5 +105,18 @@ func ReplyFor(req Packet, ourMAC net.HardwareAddr, ourIP net.IP) Packet {
 		SPA: ourIP.To4(),
 		THA: req.SHA, // send it back to whoever asked
 		TPA: req.SPA,
+	}
+}
+
+// RequestFor builds an ARP request asking who owns target. The target MAC
+// is all zeros because that is the unknown; the request is sent to the
+// Ethernet broadcast address so every host on the link sees it.
+func RequestFor(ourMAC net.HardwareAddr, ourIP, target net.IP) Packet {
+	return Packet{
+		Op:  OpRequest,
+		SHA: ourMAC,
+		SPA: ourIP.To4(),
+		THA: make(net.HardwareAddr, 6),
+		TPA: target.To4(),
 	}
 }

@@ -10,7 +10,7 @@ import (
 func TestEchoReplyChecksum(t *testing.T) {
 	req := icmp.Echo{Type: icmp.TypeEcho, ID: 7, Seq: 3, Payload: []byte("ping")}
 	rep := icmp.ReplyFrom(req)
-	raw := rep.Marshal()
+	raw := rep.Encode()
 	if raw[0] != icmp.TypeEchoReply {
 		t.Fatalf("type=%d", raw[0])
 	}

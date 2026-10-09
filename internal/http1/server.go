@@ -1,11 +1,11 @@
 // Package http1 is a tiny HTTP/1.x server sitting on our userspace TCP.
 //
-// Mental model: TCP delivers a byte stream; HTTP is just parsing that stream
+// Mental model: TCP delivers a byte stream; HTTP is just decoding that stream
 // for a request ending in \r\n\r\n, then writing a response and closing.
 //
 // It runs on any net.Listener / net.Conn: our TCP's Listener, a TLS conn
 // on top of it, or a kernel socket. It deliberately leaves out keep-alive,
-// request bodies, chunked encoding, header parsing beyond the request line,
+// request bodies, chunked encoding, header decoding beyond the request line,
 // and routing: every path gets the same page.
 package http1
 

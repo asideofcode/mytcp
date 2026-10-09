@@ -89,23 +89,23 @@ func TestARPReply(t *testing.T) {
 		Dst:     net.HardwareAddr{0xff, 0xff, 0xff, 0xff, 0xff, 0xff},
 		Src:     req.SHA,
 		Type:    eth.TypeARP,
-		Payload: req.Marshal(),
+		Payload: req.Encode(),
 	}
-	if err := st.HandleFrame(frame.Marshal()); err != nil {
+	if err := st.HandleFrame(frame.Encode()); err != nil {
 		t.Fatal(err)
 	}
 	raw := nif.lastTX()
 	if raw == nil {
 		t.Fatal("no TX")
 	}
-	out, err := eth.Parse(raw)
+	out, err := eth.Decode(raw)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if out.Type != eth.TypeARP {
 		t.Fatalf("type=%s", eth.TypeName(out.Type))
 	}
-	rep, err := arp.Parse(out.Payload)
+	rep, err := arp.Decode(out.Payload)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -120,26 +120,26 @@ func TestICMPEcho(t *testing.T) {
 	ipPkt := ip4.Packet{
 		TTL: 64, Proto: ip4.ProtoICMP,
 		Src: net.IPv4(10, 0, 0, 1), Dst: net.IPv4(10, 0, 0, 2),
-		Payload: echo.Marshal(),
+		Payload: echo.Encode(),
 	}
 	frame := eth.Frame{
 		Dst:  net.HardwareAddr{0x02, 0, 0, 0, 0, 2},
 		Src:  net.HardwareAddr{0x02, 0, 0, 0, 0, 1},
-		Type: eth.TypeIPv4, Payload: ipPkt.Marshal(),
+		Type: eth.TypeIPv4, Payload: ipPkt.Encode(),
 	}
-	if err := st.HandleFrame(frame.Marshal()); err != nil {
+	if err := st.HandleFrame(frame.Encode()); err != nil {
 		t.Fatal(err)
 	}
 	raw := nif.lastTX()
-	out, err := eth.Parse(raw)
+	out, err := eth.Decode(raw)
 	if err != nil {
 		t.Fatal(err)
 	}
-	ip, err := ip4.Parse(out.Payload)
+	ip, err := ip4.Decode(out.Payload)
 	if err != nil {
 		t.Fatal(err)
 	}
-	rep, err := icmp.ParseEcho(ip.Payload)
+	rep, err := icmp.Decode(ip.Payload)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -159,13 +159,13 @@ func TestTCPHandshakeAndEcho(t *testing.T) {
 		ipPkt := ip4.Packet{
 			TTL: 64, Proto: ip4.ProtoTCP,
 			Src: peerIP, Dst: ourIP,
-			Payload: seg.Marshal(peerIP, ourIP),
+			Payload: seg.Encode(peerIP, ourIP),
 		}
 		frame := eth.Frame{
 			Dst: net.HardwareAddr{0x02, 0, 0, 0, 0, 2}, Src: peerMAC,
-			Type: eth.TypeIPv4, Payload: ipPkt.Marshal(),
+			Type: eth.TypeIPv4, Payload: ipPkt.Encode(),
 		}
-		if err := st.HandleFrame(frame.Marshal()); err != nil {
+		if err := st.HandleFrame(frame.Encode()); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -175,15 +175,15 @@ func TestTCPHandshakeAndEcho(t *testing.T) {
 		if raw == nil {
 			t.Fatal("no TX")
 		}
-		f, err := eth.Parse(raw)
+		f, err := eth.Decode(raw)
 		if err != nil {
 			t.Fatal(err)
 		}
-		ip, err := ip4.Parse(f.Payload)
+		ip, err := ip4.Decode(f.Payload)
 		if err != nil {
 			t.Fatal(err)
 		}
-		seg, err := tcp.Parse(ip.Payload)
+		seg, err := tcp.Decode(ip.Payload)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -242,9 +242,9 @@ func TestConcurrentSendsGetDistinctIPIDs(t *testing.T) {
 		Payload: (&ip4.Packet{
 			TTL: 64, Proto: ip4.ProtoICMP,
 			Src: net.IPv4(10, 0, 0, 1), Dst: net.IPv4(10, 0, 0, 2),
-			Payload: echo.Marshal(),
-		}).Marshal(),
-	}.Marshal()
+			Payload: echo.Encode(),
+		}).Encode(),
+	}.Encode()
 
 	const perWorker, workers = 200, 4
 	var wg sync.WaitGroup
@@ -272,8 +272,8 @@ func TestConcurrentSendsGetDistinctIPIDs(t *testing.T) {
 
 	seen := map[uint16]bool{}
 	for _, raw := range nif.tx {
-		f, _ := eth.Parse(raw)
-		p, err := ip4.Parse(f.Payload)
+		f, _ := eth.Decode(raw)
+		p, err := ip4.Decode(f.Payload)
 		if err != nil {
 			t.Fatal(err)
 		}

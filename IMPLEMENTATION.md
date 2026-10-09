@@ -21,10 +21,11 @@ Each section keeps a summary table, then elaborates every row.
 |---------|--------|--------|
 | Linux TAP (`IFF_TAP \| IFF_NO_PI`) | **yes** | Blocking `unix.Read/Write` (avoids Go “not pollable”) |
 | Auto `ip link set up` + host CIDR | **yes** | Default host `10.0.0.1/24` via `-host` |
-| Ethernet II parse/marshal | **yes** | No 802.1Q, no LLC |
+| Ethernet II decode/encode | **yes** | No 802.1Q, no LLC |
 | Unicast + broadcast RX filter | **yes** | Drop frames not for our MAC (except broadcast) |
 | ARP request → reply for our IP | **yes** | Enough for on-link ping/`nc` |
-| ARP cache / gratuitous ARP / probe | **no** | |
+| ARP request + cache (for Dial) | **yes** | Learn from replies and requests about us; 3 tries 1 s apart; no expiry |
+| Gratuitous ARP / probe | **no** | |
 | macOS `utun` / `feth` backend | **no** | No stock TAP; lab is Linux/Docker |
 
 **Linux TAP (`IFF_TAP | IFF_NO_PI`)** — Opens `/dev/net/tun` so each
@@ -40,7 +41,7 @@ Without this, `tap0` stays DOWN, `ping` never emits frames, and the
 stack looks “hung” with no logs. Override with `-host` or disable with
 `-host=""`.
 
-**Ethernet II parse/marshal** — Split/join
+**Ethernet II decode/encode** — Split/join
 `[dstMAC][srcMAC][EtherType][payload]`. Enables demux to ARP vs IPv4 and
 correct TX encapsulation. We do not handle VLAN tags (`0x8100`) or
 802.3/LLC frames — lab traffic from Linux is plain Ethernet II.
@@ -55,14 +56,19 @@ who-has.
 ARP, the host never learns where to send ICMP/TCP frames. Example: first
 `ping` produces an ARP exchange in the dump, then ICMP.
 
-**ARP cache / gratuitous ARP / probe** — We do not remember neighbors or
-announce ourselves unsolicited. Fine on a quiet TAP; would matter on a
-shared L2 with many peers or after MAC/IP changes.
+**ARP request + cache (for Dial)** — Replies still go to the MAC the
+request came from, but a connection we start has no frame to reply to.
+`Stack.Resolve` picks the next hop (on-link, or the gateway), broadcasts
+"who has 10.0.0.1? tell 10.0.0.2", and caches the answer
+(`internal/stack/neigh.go`). Entries never expire.
+
+**Gratuitous ARP / probe** — We do not announce ourselves unsolicited.
+Fine on a quiet TAP; would matter on a shared L2 after MAC/IP changes.
 
 **macOS `utun` / TUN / `feth` backend** — Not built. macOS has no stock TAP
 (only L3 `utun`); `feth` can carry Ethernet frames but needs BPF + AF_NDRV,
 not one TAP-style fd. We deliberately keep live I/O on the Linux Docker lab
-so Stage 0 stays simple; parsers still unit-test on a Mac.
+so Stage 0 stays simple; decoders still unit-test on a Mac.
 
 ---
 
@@ -70,17 +76,18 @@ so Stage 0 stays simple; parsers still unit-test on a Mac.
 
 | Feature | Status | Notes |
 |---------|--------|--------|
-| IPv4 header parse/marshal | **yes** | Options skipped on parse; we always emit IHL=5 |
+| IPv4 header decode/encode | **yes** | Options skipped on decode; we always emit IHL=5 |
 | Header checksum (TX) | **yes** | |
 | Header checksum verify (RX) | **no** | We trust the host path |
 | ICMP echo request → reply | **yes** | `ping 10.0.0.2` |
 | Other ICMP (dest unreach, etc.) | **no** | |
-| UDP | **no** | |
+| UDP | **partial** | `BindUDP` / `WriteTo` / `ReadFrom`, enough for DNS; no ICMP port unreachable |
+| DNS (stub resolver) | **yes** | A records only, over our UDP to `-dns` (1.1.1.1); no cache, no TCP fallback |
 | IPv6 | **no** | Ignored when seen |
 | Fragmentation / reassembly | **no** | Assumes whole datagrams |
-| Routing / multiple ifaces | **no** | Single TAP, on-link only |
+| Routing / multiple ifaces | **partial** | One TAP; on-link subnet or one gateway (`-host`, `-gw`) |
 
-**IPv4 header parse/marshal** — Read version, lengths, TTL, protocol,
+**IPv4 header decode/encode** — Read version, lengths, TTL, protocol,
 addresses; emit a minimal 20-byte header. Enables demux to ICMP vs TCP
 and building replies that Linux accepts. Options in RX are skipped
 (payload starts after IHL); we never emit options.
@@ -99,11 +106,21 @@ alive. Example: `ping -c 3 10.0.0.2` → three echo replies, stack logs
 `icmp: echo request … — reply`.
 
 **Other ICMP** — No destination-unreachable, time-exceeded, redirects.
-A closed UDP port would not get a polite ICMP error from us (and we have
-no UDP anyway).
+A closed UDP port would not get a polite ICMP error from us; the
+datagram is just dropped.
 
-**UDP** — No parse, no sockets-like datagram API. DNS/`nc -u` will not
-work against this stack.
+**UDP** — `internal/udp` encodes and decodes datagrams (pseudo-header
+checksum, like TCP). The stack hands each one to the `UDPPort` bound to
+its destination port, or drops it. It exists for DNS; there is no server
+app on it.
+
+**DNS (stub resolver)** — `stack.LookupIPv4` sends one A question
+(`internal/dns`, hand-rolled: labels, compression pointers, CNAME chains
+skipped) over our UDP to the `-dns` server, 3 tries 1 s apart, and
+accepts only an answer from that server's port 53 with our random ID.
+`DialContext` uses it, so `mytcp -get https://www.google.com/` makes no
+kernel socket calls at all (`make smoke-internet` checks with strace).
+No AAAA, no cache, no TCP fallback when an answer is truncated.
 
 **IPv6** — Frames with EtherType IPv6 (or IPv6 inside dumps) are ignored.
 Neighbor Discovery is not implemented; use IPv4 in the lab.
@@ -113,7 +130,9 @@ one Ethernet frame. Large packets that fragment will not be reassembled;
 keep lab payloads small (ping/`nc` lines are fine).
 
 **Routing / multiple ifaces** — One TAP, one /24, no forwarding table.
-We only answer when `dst == our IP`. No gateway behavior.
+We only answer when `dst == our IP`. For connections we start, anything
+off the `-host` subnet goes to one gateway (the kernel side by default);
+in the lab, `scripts/lab-nat.sh` NATs it out to the internet.
 
 ---
 
@@ -121,8 +140,8 @@ We only answer when `dst == our IP`. No gateway behavior.
 
 | Feature | Status | Notes |
 |---------|--------|--------|
-| Passive open (`LISTEN`) | **yes** | One port via `-tcp` (default 7) |
-| Active open (`connect`) | **no** | We are server-only |
+| Passive open (`LISTEN`) | **yes** | `Stack.Listen(port)`; one port via `-tcp` |
+| Active open (`connect`) | **yes** | `Stack.Dial` / `stack.DialContext`; `-dial`, `-get` |
 | 3-way handshake | **yes** | SYN → SYN-ACK → ACK → ESTABLISHED |
 | Simultaneous open | **no** | |
 | Seq / ack numbering | **yes** | SYN/FIN consume one seq; data advances by length |
@@ -135,24 +154,28 @@ We only answer when `dst == our IP`. No gateway behavior.
 | RST on bad / non-listen | **yes** | |
 | Multiple concurrent conns | **yes** | Map keyed by remote IP+port + local port |
 | PSH / ACK / SYN / FIN / RST flags | **yes** | URG not handled |
-| TCP options (MSS, WScale, SACK, TS) | **no** | Parse skips option bytes; marshal emits 20-byte header only |
+| TCP options (MSS, WScale, SACK, TS) | **no** | Decode skips option bytes; encode emits 20-byte header only |
 | Checksum TX (pseudo-header) | **yes** | |
 | Checksum verify RX | **no** | |
 
 **Passive open (`LISTEN`)** — We wait for peers; `-tcp 7` registers port
-7. **Enables `nc 10.0.0.2 7`** from the lab. Set `-tcp 0` to disable TCP
-and only do ARP/ICMP.
+7. **Enables `nc 10.0.0.2 7`** from the lab.
 
-**Active open (`connect`)** — We never send a first SYN. You cannot use
-this process as a client to an external server; only as the server side
-of the TAP.
+**Active open (`connect`)** — `Dial(ctx, ip, port)` resolves the next
+hop's MAC, picks an ephemeral port (49152–65535), sends SYN (SYN_SENT),
+and returns a `net.Conn` once SYN+ACK arrives and we ACK it. A RST is
+`connection refused`; an unanswered SYN times out after the retransmit
+limit. `stack.DialContext` has `net.Dialer`'s signature, so
+`http.Transport{DialContext: st.DialContext}` makes Go's `http.Client`
+ride on our TCP. No MSS option is sent, so peers fall back to 536-byte
+segments.
 
 **3-way handshake** — SYN in → SYN-ACK out → ACK in → ESTABLISHED.
 **Enables a real Linux TCP client** to believe it has a connection.
 Example log: `SYN → SYN_RECEIVED` then `ESTABLISHED`.
 
-**Simultaneous open** — Both sides sending SYN at once is not modeled.
-Irrelevant for `nc` → listening stack.
+**Simultaneous open** — Both sides sending SYN at once is not modeled;
+a bare SYN in SYN_SENT is ignored.
 
 **Seq / ack numbering** — Track `rcv_nxt`, `snd_una`, `snd_nxt`. SYN and
 FIN consume one sequence number; data consumes `len(payload)`. This is
@@ -395,22 +418,22 @@ interactive `nc` lines and small pings.
 ```mermaid
 stateDiagram-v2
   [*] --> Listen: Listen port
+  [*] --> SynSent: Dial, SYN out
   Listen --> SynReceived: SYN in
   SynReceived --> Established: ACK of our SYN-ACK
+  SynSent --> Established: SYN-ACK in, ACK out
   Established --> CloseWait: FIN in
   CloseWait --> LastAck: we send FIN+ACK
   LastAck --> Closed: ACK of our FIN
   Closed --> [*]
 
-  note right of Listen
-    No SYN-SENT / active open
-  end note
   note right of Established
     Data: in-order only → echo
   end note
 ```
 
-Not modeled: `SYN-SENT`, `FIN-WAIT-1/2`, `CLOSING`, `TIME-WAIT`.
+Not modeled: `CLOSING`, `TIME-WAIT` (active close via `FIN-WAIT-1/2`
+exists in code but is left out of this diagram).
 
 ---
 

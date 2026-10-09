@@ -14,7 +14,7 @@ func TestChecksumKnown(t *testing.T) {
 	}
 }
 
-func TestMarshalParse(t *testing.T) {
+func TestEncodeDecode(t *testing.T) {
 	p := ip4.Packet{
 		ID:      0xabcd,
 		TTL:     64,
@@ -23,12 +23,12 @@ func TestMarshalParse(t *testing.T) {
 		Dst:     net.IPv4(10, 0, 0, 1),
 		Payload: []byte{8, 0, 0, 0, 0, 1, 0, 1, 'h', 'i'},
 	}
-	raw := p.Marshal()
+	raw := p.Encode()
 	// header checksum should verify to 0 when included
 	if sum := ip4.Checksum(raw[:20]); sum != 0 {
 		t.Fatalf("header checksum residual %04x", sum)
 	}
-	got, err := ip4.Parse(raw)
+	got, err := ip4.Decode(raw)
 	if err != nil {
 		t.Fatal(err)
 	}

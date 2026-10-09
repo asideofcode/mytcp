@@ -71,7 +71,7 @@ flowchart TB
 | Package | Layer | Job |
 |---------|-------|-----|
 | `tap` | I/O | Open `/dev/net/tun` (`IFF_TAP\|IFF_NO_PI`), blocking read/write, bring link up + host CIDR |
-| `eth` | L2 | Ethernet II header parse/marshal |
+| `eth` | L2 | Ethernet II header decode/encode |
 | `arp` | L2.5 | Who-has / is-at for IPv4 over Ethernet |
 | `ip4` | L3 | IPv4 header + Internet checksum |
 | `icmp` | L3 | Echo request → echo reply |
@@ -98,7 +98,7 @@ Start at the wire-shaped bytes on the TAP fd and climb the layers.
 | `0x0806` | ARP |
 | `0x0800` | IPv4 |
 
-`stack.HandleFrame` parses with `eth.Parse`, drops frames not for our MAC
+`stack.HandleFrame` decodes with `eth.Decode`, drops frames not for our MAC
 (unless broadcast), then switches on type.
 
 ### L2.5 — ARP
@@ -123,10 +123,10 @@ payload. `tcp.Stack` keys connections by `(remoteIP, remotePort, localPort)`.
 ```mermaid
 flowchart TB
   bytes["TAP read: raw bytes"]
-  ethN["eth.Parse"]
+  ethN["eth.Decode"]
   demux{"EtherType?"}
   arpN["arp — maybe reply"]
-  ipN["ip4.Parse"]
+  ipN["ip4.Decode"]
   proto{"Proto?"}
   icmpN["icmp echo → reply"]
   tcpN["tcp.Handle"]
@@ -158,7 +158,7 @@ bytes on the fd.
 TCP never talks to TAP directly. It calls `Emitter.SendTCP` (implemented by
 `stack.Stack`):
 
-1. `tcp.Segment.Marshal` — TCP header + payload + checksum  
+1. `tcp.Segment.Encode` — TCP header + payload + checksum  
 2. `sendIPv4` — IP header  
 3. `eth.Frame` — L2  
 4. `writeFrame`

@@ -124,6 +124,7 @@ sequenceDiagram
           ARP asks for the gateway, not google: google is off-subnet, so every frame goes to the gateway’s MAC
           while the IPv4 header still says google. The kernel may skip ARP if the gateway is cached.
           Point at the left lane: four syscalls. Right lanes: everything this talk builds.
+          Later, mytcp -get plays the kernel lane itself: its own ARP who-has for the gateway, its own SYN.
         </aside>
       </section>
 
@@ -316,7 +317,7 @@ sequenceDiagram
         <h2>What “onion interface” means</h2>
         <blockquote>
           Each layer is a <strong>header plus a payload</strong>.<br />
-          In code it’s a <strong>struct</strong> with <strong>Parse</strong> (bytes → struct) and <strong>Marshal</strong> (struct → bytes).<br />
+          In code it’s a <strong>struct</strong> with <strong>Decode</strong> (bytes → struct) and <strong>Encode</strong> (struct → bytes).<br />
           It supports only a <strong>few operations</strong>.<br />
           Its payload is the <strong>next layer’s whole message</strong>.
         </blockquote>
@@ -435,17 +436,17 @@ type Frame struct {
 }
 
 // bytes off the wire → struct
-func Parse(b []byte) (Frame, error) { /* … */ }
+func Decode(b []byte) (Frame, error) { /* … */ }
 
 // struct → bytes ready to send
-func (f Frame) Marshal() []byte     { /* … */ }</code></pre>
+func (f Frame) Encode() []byte     { /* … */ }</code></pre>
         <p class="fragment soft">Addresses, a type field saying what’s inside, and the payload. Every layer follows this pattern.</p>
       </section>
 
       <section>
-        <h2>Parsing means reading bytes at fixed offsets</h2>
+        <h2>Decoding means reading bytes at fixed offsets</h2>
         <p class="code-path">internal/eth/ethernet.go</p>
-        <pre><code class="language-go" data-trim>func Parse(b []byte) (Frame, error) {
+        <pre><code class="language-go" data-trim>func Decode(b []byte) (Frame, error) {
     // anything shorter than the 14-byte header can't be a frame
     if len(b) &lt; HeaderLen {
         return Frame{}, fmt.Errorf("ethernet: frame too short")
@@ -476,7 +477,7 @@ jq -r 'select(.n==0).data' captures/talk-http.jsonl | xxd -r -p | hexdump -C</co
           <tbody>
             <tr><td><span class="chip eth1"></span></td><td>0–5</td><td><a class="jump" href="#/struct-eth">Destination MAC (<code>Dst</code>)</a></td><td>ff:ff:ff:ff:ff:ff = broadcast: everyone on the link</td></tr>
             <tr><td><span class="chip eth2"></span></td><td>6–11</td><td><a class="jump" href="#/struct-eth">Source MAC (<code>Src</code>)</a></td><td>ee:ea:f3:0f:57:32 = the kernel’s side of tap0</td></tr>
-            <tr><td><span class="chip eth1"></span></td><td>12–13</td><td><a class="jump" href="#/struct-eth">EtherType (<code>Type</code>)</a></td><td>08 06 = 0x0806 = ARP, so <code>arp.Parse</code> gets the rest</td></tr>
+            <tr><td><span class="chip eth1"></span></td><td>12–13</td><td><a class="jump" href="#/struct-eth">EtherType (<code>Type</code>)</a></td><td>08 06 = 0x0806 = ARP, so <code>arp.Decode</code> gets the rest</td></tr>
             <tr><td><span class="chip f0"></span></td><td>14–41</td><td><a class="jump" href="#/hex-arp-header">Payload (<code>Payload</code>)</a></td><td>28 bytes: the ARP message, unpacked in the ARP section</td></tr>
           </tbody>
         </table>
@@ -488,7 +489,7 @@ jq -r 'select(.n==0).data' captures/talk-http.jsonl | xxd -r -p | hexdump -C</co
       <section>
         <h2>Choosing the next layer by its type field</h2>
         <p class="code-path">internal/stack/stack.go · HandleFrame</p>
-        <pre><code class="language-go" data-trim>f, err := eth.Parse(b)
+        <pre><code class="language-go" data-trim>f, err := eth.Decode(b)
 // …
 
 // the EtherType field says what the payload is
@@ -500,7 +501,7 @@ case eth.TypeIPv4: // 0x0800: an IP packet, for later
 default:           // usually IPv6 chatter from the host: drop it
     return nil
 }</code></pre>
-        <p class="fragment soft">Each protocol only parses its own header. The <code>stack</code> package reads the type field and hands the payload to the right parser. Frame 0 said <code>08 06</code>, so next: ARP.</p>
+        <p class="fragment soft">Each protocol only decodes its own header. The <code>stack</code> package reads the type field and hands the payload to the right decoder. Frame 0 said <code>08 06</code>, so next: ARP.</p>
       </section>
 
 
@@ -517,15 +518,15 @@ type Packet struct {
     TPA net.IP           // target IP: the one being asked about
 }
 
-func Parse(b []byte) (Packet, error) { /* … */ } // bytes → struct
-func (p Packet) Marshal() []byte     { /* … */ } // struct → bytes</code></pre>
+func Decode(b []byte) (Packet, error) { /* … */ } // bytes → struct
+func (p Packet) Encode() []byte     { /* … */ } // struct → bytes</code></pre>
         <p class="fragment soft">ARP: ask the local network which MAC address owns this IP. The owner replies with its MAC.</p>
       </section>
 
       <section>
         <h2>Answering “who has 10.0.0.2?”</h2>
         <p class="code-path">internal/stack/stack.go · handleARP</p>
-        <pre><code class="language-go" data-trim>p, err := arp.Parse(f.Payload)
+        <pre><code class="language-go" data-trim>p, err := arp.Decode(f.Payload)
 // ignore replies, and questions about someone else's IP
 if p.Op != arp.OpRequest || !p.TPA.Equal(s.cfg.IP) {
     return nil
@@ -535,7 +536,7 @@ reply := arp.ReplyFor(p, s.cfg.MAC, s.cfg.IP)
 // wrap it in Ethernet, addressed straight back to whoever asked
 out := eth.Frame{
     Dst: p.SHA, Src: s.cfg.MAC, Type: eth.TypeARP,
-    Payload: reply.Marshal(),
+    Payload: reply.Encode(),
 }
 return s.writeFrame(out)</code></pre>
         <p class="rabbit fragment"><span>Rabbit holes</span> switching and MAC learning · VLANs · spanning tree · ARP spoofing · the Wi-Fi MAC layer</p>
@@ -627,8 +628,8 @@ type Packet struct {
     Payload   []byte // the ICMP or TCP message
 }
 
-func Parse(b []byte) (Packet, error) { /* … */ } // bytes → struct
-func (p Packet) Marshal() []byte     { /* … */ } // struct → bytes</code></pre>
+func Decode(b []byte) (Packet, error) { /* … */ } // bytes → struct
+func (p Packet) Encode() []byte     { /* … */ } // struct → bytes</code></pre>
         <p class="fragment soft">MAC addresses only reach the next machine. An IP address names the final destination, so the packet keeps it the whole way while the Ethernet header is rewritten at every hop.</p>
       </section>
 
@@ -654,7 +655,7 @@ func (p Packet) Marshal() []byte     { /* … */ } // struct → bytes</code></p
             <tr><td><span class="chip ip2"></span></td><td>18–19</td><td>Identification</td><td>c6 d3: only used if the packet gets split up</td></tr>
             <tr><td><span class="chip ip1"></span></td><td>20–21</td><td>Flags + fragment offset</td><td>40 00 = “don’t fragment”, and this isn’t a fragment</td></tr>
             <tr><td><span class="chip ip2"></span></td><td>22</td><td>Time to live</td><td>40 = 64 hops before a router throws it away</td></tr>
-            <tr><td><span class="chip ip1"></span></td><td>23</td><td>Protocol (<code>Proto</code>)</td><td>01 = ICMP, so <code>icmp.ParseEcho</code> gets the payload</td></tr>
+            <tr><td><span class="chip ip1"></span></td><td>23</td><td>Protocol (<code>Proto</code>)</td><td>01 = ICMP, so <code>icmp.Decode</code> gets the payload</td></tr>
             <tr><td><span class="chip ip2"></span></td><td>24–25</td><td>Header checksum</td><td>5f d3: covers these 20 bytes only</td></tr>
             <tr><td><span class="chip ip1"></span></td><td>26–29</td><td>Source IP (<code>Src</code>)</td><td>0a 00 00 01 = 10.0.0.1</td></tr>
             <tr><td><span class="chip ip2"></span></td><td>30–33</td><td>Destination IP (<code>Dst</code>)</td><td>0a 00 00 02 = 10.0.0.2</td></tr>
@@ -667,12 +668,12 @@ func (p Packet) Marshal() []byte     { /* … */ } // struct → bytes</code></p
       <section>
         <h2>IPv4’s protocol field picks the next layer</h2>
         <p class="code-path">internal/stack/stack.go · handleIPv4</p>
-        <pre><code class="language-go" data-trim>// after ip4.Parse, the protocol field says what the payload is
+        <pre><code class="language-go" data-trim>// after ip4.Decode, the protocol field says what the payload is
 switch pkt.Proto {
 case ip4.ProtoICMP: // 1 = ICMP, e.g. ping
     return s.handleICMP(f.Src, pkt)
 case ip4.ProtoTCP:  // 6 = TCP: peel one more layer
-    seg, err := tcp.Parse(pkt.Payload)
+    seg, err := tcp.Decode(pkt.Payload)
     // …
     return s.tcp.Handle(f.Src, pkt.Src, seg)
 }</code></pre>
@@ -699,15 +700,15 @@ case ip4.ProtoTCP:  // 6 = TCP: peel one more layer
         <h2>Answering a ping</h2>
         <p class="code-path">internal/stack/stack.go · handleICMP</p>
         <pre><code class="language-go" data-trim>// the IPv4 payload is an ICMP message
-echo, err := icmp.ParseEcho(pkt.Payload)
+echo, err := icmp.Decode(pkt.Payload)
 // only answer echo requests (type 8)
 if echo.Type != icmp.TypeEcho {
     return nil
 }
 // same ID, sequence number and data, but type 0 = echo reply
 reply := icmp.ReplyFrom(echo)
-// Marshal adds a fresh checksum; send it back in IPv4, then Ethernet
-return s.sendIPv4(srcMAC, pkt.Src, ip4.ProtoICMP, reply.Marshal())</code></pre>
+// Encode adds a fresh checksum; send it back in IPv4, then Ethernet
+return s.sendIPv4(srcMAC, pkt.Src, ip4.ProtoICMP, reply.Encode())</code></pre>
         <p class="rabbit fragment"><span>Rabbit holes</span> how traceroute uses TTL and “time exceeded” · “destination unreachable” · path MTU discovery · why some firewalls drop ping</p>
       </section>
 
@@ -781,9 +782,9 @@ return s.sendIPv4(srcMAC, pkt.Src, ip4.ProtoICMP, reply.Marshal())</code></pre>
     Payload          []byte // app bytes, if any; a SYN has none
 }
 
-func Parse(b []byte) (Segment, error) { /* … */ }
-// the checksum also covers both IP addresses, so Marshal needs them
-func (s Segment) Marshal(srcIP, dstIP net.IP) []byte { /* … */ }</code></pre>
+func Decode(b []byte) (Segment, error) { /* … */ }
+// the checksum also covers both IP addresses, so Encode needs them
+func (s Segment) Encode(srcIP, dstIP net.IP) []byte { /* … */ }</code></pre>
         <p class="rabbit fragment"><span>Rabbit holes</span> congestion control (Reno, CUBIC, BBR) · flow control and windows · SACK · QUIC · SRD</p>
       </section>
 
@@ -1035,6 +1036,33 @@ func (l *Listener) Accept() (net.Conn, error) {
         <p class="fragment soft">Compile-time checks: both types satisfy Go’s socket interfaces. HTTPS and <code>http.Server.Serve(ln)</code> need no special casing.</p>
       </section>
 
+      <section id="tcp-dial" class="code-tight">
+        <h2>Now the other direction: <code>Dial</code></h2>
+        <p class="code-path">internal/tcp/dial.go · Dial (trimmed)</p>
+        <pre><code class="language-go" data-trim data-line-numbers="1-2|4-8|10-15">func (s *Stack) Dial(ctx context.Context, ip net.IP, port uint16) (*StreamConn, error) {
+    mac, err := s.emit.Resolve(ctx, ip) // our own ARP: who has the next hop?
+
+    s.mu.Lock()
+    c := &amp;Conn{state: StateSynSent, remoteMAC: mac, localPort: 49152 /* next free */}
+    s.conns[c.tuple] = c
+    s.sendCtrlLocked(c, FlagSYN, nil)   // step one, retransmitted like any SYN
+    s.mu.Unlock()
+
+    select {
+    case err := &lt;-c.dialDone:          // Handle: SYN+ACK in, ACK out, ESTABLISHED
+        return c.stream, err           // or ECONNREFUSED, if a RST came back
+    case &lt;-ctx.Done():
+        return nil, ctx.Err()
+    }
+}</code></pre>
+        <p class="fragment soft">One new state, <code>SYN_SENT</code>. What comes back is the same <code>StreamConn</code> that <code>Accept</code> returns.</p>
+        <aside class="notes">
+          Until now we only answered. Dialing means we ask first: ARP for the next hop (the gateway, if the address is off our subnet),
+          pick an ephemeral port, send the SYN. Handle gets a SYN_SENT case: SYN+ACK that acks our SYN → ACK → ESTABLISHED → wake Dial.
+          Known gaps: no MSS option, no TIME_WAIT, out-of-order segments dropped.
+        </aside>
+      </section>
+
 
       <!-- ========== INTERLUDE: TCP IS A CHOICE ========== -->
       <section>
@@ -1082,7 +1110,7 @@ peer Nitro   ── reorder → hand TCP bytes up</code></pre>
         <p class="soft">HTTP: the application layer, which gives the stream meaning: a request and a response.</p>
       </section>
 
-      <section id="http-parse" class="code-tight">
+      <section id="http-decode" class="code-tight">
         <h2>Our own HTTP server: bytes in, bytes out</h2>
         <p class="code-path">internal/http1/server.go (trimmed) · <code>-app http</code></p>
         <pre><code class="language-go" data-trim data-line-numbers="1-3|4-6|7-10|14-17">func (s *Server) ServeConn(c net.Conn) { // from our Listener’s Accept
@@ -1120,8 +1148,8 @@ func (s *Server) respond(head string) []byte { // "GET / HTTP/1.1\r\nHost: …"
 
 srv := &amp;http.Server{Handler: page}
 srv.SetKeepAlivesEnabled(false)   // like ours: one request per connection
-srv.Serve(stack.TCP().Listen(80)) // Accept, parse, respond, close: all Go</code></pre>
-        <p class="fragment soft">Go parses the request into <code>r</code> and gives us <code>w</code> to answer. curl can’t tell the two servers apart.</p>
+srv.Serve(stack.TCP().Listen(80)) // Accept, decode, respond, close: all Go</code></pre>
+        <p class="fragment soft">Go decodes the request into <code>r</code> and gives us <code>w</code> to answer. curl can’t tell the two servers apart.</p>
       </section>
 
       <section id="http-compare">
@@ -1129,7 +1157,7 @@ srv.Serve(stack.TCP().Listen(80)) // Accept, parse, respond, close: all Go</code
         <table class="compact">
           <thead><tr><th></th><th>http1</th><th>net/http</th></tr></thead>
           <tbody>
-            <tr class="fragment"><td>Parses</td><td>the request line only</td><td>request line, headers, body, chunked</td></tr>
+            <tr class="fragment"><td>Decodes</td><td>the request line only</td><td>request line, headers, body, chunked</td></tr>
             <tr class="fragment"><td>Per connection</td><td>one request, then FIN</td><td>keep-alive: many requests</td></tr>
             <tr class="fragment"><td>Limits</td><td>64 KiB of headers</td><td>timeouts, header size, body size</td></tr>
             <tr class="fragment"><td>You write</td><td>the bytes on the wire</td><td>a Handler, given <code>w</code> and <code>r</code></td></tr>
@@ -1138,6 +1166,66 @@ srv.Serve(stack.TCP().Listen(80)) // Accept, parse, respond, close: all Go</code
           </tbody>
         </table>
         <p class="fragment soft">Ours shows what HTTP/1 is: text on a stream. Go’s is the one you’d ship.</p>
+      </section>
+
+      <section id="http-client" class="code-tight">
+        <h2>Go’s <code>http.Client</code>, on our TCP</h2>
+        <p class="code-path">cmd/mytcp/main.go · runGet (trimmed) · <code>-get URL</code></p>
+        <pre><code class="language-go" data-trim data-line-numbers="1-5|7-8">hc := &amp;http.Client{
+    Transport: &amp;http.Transport{
+        DialContext: st.DialContext, // net.Dialer's signature, our Dial inside
+    },
+}
+
+resp, err := hc.Get("https://www.google.com/")
+// DNS: ours (UDP to 1.1.1.1) · TCP: ours · TLS and HTTP: Go's</code></pre>
+        <p class="fragment soft">Through the lab’s NAT this fetches google.com’s 84 KB home page. Same <code>net.Conn</code>, opened from our end.</p>
+        <aside class="notes">
+          DialContext is the only seam http.Transport needs. It does TLS itself over whatever net.Conn we return.
+          Path: tap0 → kernel as gateway → MASQUERADE out of the container → internet. scripts/lab-nat.sh sets that up.
+        </aside>
+      </section>
+
+      <section id="dns-lookup" class="code-tight">
+        <h2>DNS without the kernel</h2>
+        <p class="code-path">internal/stack/dial.go · LookupIPv4 (trimmed) · internal/dns · internal/udp</p>
+        <pre><code class="language-go" data-trim data-line-numbers="1-4|6-8|9-11">func (s *Stack) LookupIPv4(ctx context.Context, host string) (net.IP, error) {
+    q, _ := dns.Query(id, host) // header, 3www6google3com0, type A, class IN
+    u, _ := s.BindUDP(0)        // our UDP, an ephemeral port
+    defer u.Close()
+
+    for try := 0; try &lt; 3; try++ {
+        u.WriteTo(ctx, q, s.cfg.DNS, 53)           // ARP the gateway, out via NAT
+        b, ip, port, err := u.ReadFrom(within1s)   // only 1.1.1.1:53 counts
+        if err == nil &amp;&amp; ip.Equal(s.cfg.DNS) &amp;&amp; port == 53 {
+            return first(dns.ParseResponse(b, id)) // skip CNAMEs, first A record
+        }
+    }
+    return nil, errNoAnswer
+}</code></pre>
+        <p class="fragment soft">A stub resolver, like libc’s: one UDP question to a server that does the real work, one answer back.</p>
+        <aside class="notes">
+          UDP is eight bytes of header: ports, length, checksum. DNS is a 12-byte header, the name as length-prefixed labels,
+          and answers whose names point back into the message (compression). We ignore everything but A records.
+          Random ID plus source check: a forged answer has to guess both. Limits: no AAAA, no cache, no TCP fallback.
+        </aside>
+      </section>
+
+      <section id="strace-mytcp">
+        <h2>Same question to strace, this time for mytcp</h2>
+        <p class="code-path">strace -f -e trace=%network mytcp -get https://www.google.com/ · inside Docker</p>
+        <pre class="diagram-code strace"><code class="nohighlight">socket(AF_NETLINK, SOCK_RAW|SOCK_CLOEXEC, NETLINK_ROUTE) = 3
+sendto(3, [{nlmsg_type=RTM_NEWLINK, ...}], 32, 0, ...) = 32
+# ↑ the ip tool bringing tap0 up. Setup, not traffic.
+
+# No socket(AF_INET). No connect. No sendto(5, "GET / …").
+# ARP, DNS, TCP, TLS and HTTP all left as read and write
+# on /dev/net/tun.</code></pre>
+        <p class="fragment soft">curl fetching the same page: 41 socket and connect lines. mytcp: none. The kernel is just the wire.</p>
+        <aside class="notes">
+          make smoke-internet runs this and fails if any AF_INET socket or connect shows up.
+          The kernel still forwards and NATs our packets as the gateway, the way a home router would. It no longer runs our stack.
+        </aside>
       </section>
 
       <!-- hexdump:http -->
@@ -1165,7 +1253,7 @@ srv.Serve(stack.TCP().Listen(80)) // Accept, parse, respond, close: all Go</code
             <tr class="fragment semi-fade-out" data-fragment-index="2"><td><span class="chip tcp1"></span></td><td>48–49</td><td><a class="jump" href="#/struct-tcp">Window (<code>Window</code>)</a></td><td>fa f0 = 64240 more bytes curl can take</td></tr>
             <tr class="fragment semi-fade-out" data-fragment-index="2"><td><span class="chip tcp2"></span></td><td>50–51</td><td>Checksum</td><td>91 b1: covers TCP header, payload and both IPs</td></tr>
             <tr class="fragment semi-fade-out" data-fragment-index="2"><td><span class="chip tcp1"></span></td><td>52–53</td><td>Urgent pointer</td><td>00 00: unused</td></tr>
-            <tr><td><span class="chip http1"></span></td><td>54–125</td><td><a class="jump" href="#/http-parse">Payload (<code>Payload</code>)</a></td><td>72 bytes of HTTP: <code>GET / HTTP/1.1</code>, Host, User-Agent, Accept, blank line</td></tr>
+            <tr><td><span class="chip http1"></span></td><td>54–125</td><td><a class="jump" href="#/http-decode">Payload (<code>Payload</code>)</a></td><td>72 bytes of HTTP: <code>GET / HTTP/1.1</code>, Host, User-Agent, Accept, blank line</td></tr>
           </tbody>
         </table>
         <p class="soft hexnote fragment" data-fragment-index="3">On the way in, mytcp peels Ethernet, IPv4 and TCP in turn. What’s left, the green part, is all the HTTP code sees.</p>
@@ -1366,8 +1454,8 @@ sequenceDiagram
         <pre><code class="language-go" data-trim data-line-numbers="1-2|3-6|7-10|11-12">// a fresh key pair, used for this connection only
 ecdhe, _ := ecdh.P256().GenerateKey(rand.Reader)
 // send our public half, signed with the certificate's key so the
-// client knows it's really us (ch = the parsed ClientHello)
-ske, _ := marshalServerKeyExchange(ch.random, serverRandom,
+// client knows it's really us (ch = the decoded ClientHello)
+ske, _ := encodeServerKeyExchange(ch.random, serverRandom,
     ecdhe.PublicKey().Bytes(), cert.PrivateKey)
 // the client sends its public half back; combining it with our
 // private half gives a secret only the two of us can compute
@@ -1506,6 +1594,7 @@ record payload = explicitNonce(8) || ciphertext || tag(16)</code></pre>
             <tr class="fragment"><td>TCP handshake, data, resends</td><td><code>nc</code> to an echo app</td></tr>
             <tr class="fragment"><td>HTTP (ours, or Go’s <code>net/http</code>)</td><td><code>curl http://10.0.0.2/</code></td></tr>
             <tr class="fragment"><td>TLS (Go’s, or our mintls)</td><td><code>curl -k https://10.0.0.2/</code></td></tr>
+            <tr class="fragment"><td>Connecting out (<code>SYN_SENT</code>)</td><td><code>mytcp -get https://…</code> via NAT</td></tr>
           </tbody>
         </table>
         <p class="fragment soft">We didn’t start a layer until the one below it worked.</p>
@@ -1522,7 +1611,7 @@ record payload = explicitNonce(8) || ciphertext || tag(16)</code></pre>
             <tr><td>Transport</td><td><code>tcp</code></td></tr>
             <tr><td>Security</td><td><code>mintls</code> (our TLS), <code>https1</code> (wiring)</td></tr>
             <tr><td>Application</td><td><code>http1</code></td></tr>
-            <tr><td><em>Glue</em></td><td><code>stack</code>: reads type fields and calls the next parser</td></tr>
+            <tr><td><em>Glue</em></td><td><code>stack</code>: reads type fields and calls the next decoder</td></tr>
           </tbody>
         </table>
       </section>
@@ -1548,7 +1637,8 @@ curl http://10.0.0.2/    # ARP + IP + TCP + HTTP
 # HTTPS: restart shell A with -app https (Go’s TLS), -app https-go
 # (all stdlib above TCP) or -app https-diy (our mintls), then
 # (-k accepts our self-signed cert; mintls only speaks TLS 1.2)
-curl -k --tlsv1.2 --tls-max 1.2 https://10.0.0.2/</code></pre>
+curl -k --tlsv1.2 --tls-max 1.2 https://10.0.0.2/
+/tmp/mytcp -i tap0 -get https://www.google.com/   # other way: Dial, via NAT</code></pre>
       </section>
 
       <section>
@@ -1557,6 +1647,7 @@ curl -k --tlsv1.2 --tls-max 1.2 https://10.0.0.2/</code></pre>
           <li class="fragment"><code>ping</code> = ARP + ICMP</li>
           <li class="fragment"><code>curl</code> = ARP + IP + TCP + HTTP</li>
           <li class="fragment"><code>curl -k</code> = the same path, with TLS between TCP and HTTP</li>
+          <li class="fragment"><code>mytcp -get</code> = the same layers, with us asking first</li>
         </ul>
       </section>
 
@@ -1625,7 +1716,7 @@ curl -k --tlsv1.2 --tls-max 1.2 https://10.0.0.2/</code></pre>
           <li class="fragment"><strong>Build it once</strong> — the “magic” turns into headers you can read</li>
           <li class="fragment"><strong>Stand on giants</strong> — every layer is decades of shared work</li>
           <li class="fragment"><strong>Clean boundaries beat prediction</strong> — they let SRD, TLS and QUIC plug in</li>
-          <li class="fragment"><strong>Same shape everywhere</strong> — header, Parse / Marshal, payload</li>
+          <li class="fragment"><strong>Same shape everywhere</strong> — header, Decode / Encode, payload</li>
           <li class="fragment"><strong>Pick a layer and dig</strong> — each one is a whole discipline</li>
         </ol>
       </section>

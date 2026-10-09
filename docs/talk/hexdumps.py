@@ -186,7 +186,7 @@ J = lambda text, sid: f'<a class="jump" href="#/{sid}">{text}</a>'
 ETH_READ = shade([
     (0, 6, "eth", J(f"Destination MAC ({C('Dst')})", "struct-eth"), "ff:ff:ff:ff:ff:ff = broadcast: everyone on the link"),
     (6, 12, "eth", J(f"Source MAC ({C('Src')})", "struct-eth"), "ee:ea:f3:0f:57:32 = the kernel’s side of tap0"),
-    (12, 14, "eth", J(f"EtherType ({C('Type')})", "struct-eth"), f"08 06 = 0x0806 = ARP, so {C('arp.Parse')} gets the rest"),
+    (12, 14, "eth", J(f"EtherType ({C('Type')})", "struct-eth"), f"08 06 = 0x0806 = ARP, so {C('arp.Decode')} gets the rest"),
     (14, 42, "f0", J(f"Payload ({C('Payload')})", "hex-arp-header"), "28 bytes: the ARP message, unpacked in the ARP section"),
 ])
 
@@ -222,7 +222,7 @@ IPV4 = shade([
     (18, 20, "ip", "Identification", "c6 d3: only used if the packet gets split up"),
     (20, 22, "ip", "Flags + fragment offset", "40 00 = “don’t fragment”, and this isn’t a fragment"),
     (22, 23, "ip", "Time to live", "40 = 64 hops before a router throws it away"),
-    (23, 24, "ip", f"Protocol ({C('Proto')})", f"01 = ICMP, so {C('icmp.ParseEcho')} gets the payload"),
+    (23, 24, "ip", f"Protocol ({C('Proto')})", f"01 = ICMP, so {C('icmp.Decode')} gets the payload"),
     (24, 26, "ip", "Header checksum", "5f d3: covers these 20 bytes only"),
     (26, 30, "ip", f"Source IP ({C('Src')})", "0a 00 00 01 = 10.0.0.1"),
     (30, 34, "ip", f"Destination IP ({C('Dst')})", "0a 00 00 02 = 10.0.0.2"),
@@ -292,7 +292,7 @@ TCP_GET = shade([
     (48, 50, "tcp", T(f"Window ({C('Window')})"), "fa f0 = 64240 more bytes curl can take"),
     (50, 52, "tcp", "Checksum", "91 b1: covers TCP header, payload and both IPs"),
     (52, 54, "tcp", "Urgent pointer", "00 00: unused"),
-    (54, 126, "http", J(f"Payload ({C('Payload')})", "http-parse"), f"72 bytes of HTTP: {C('GET / HTTP/1.1')}, Host, User-Agent, Accept, blank line"),
+    (54, 126, "http", J(f"Payload ({C('Payload')})", "http-decode"), f"72 bytes of HTTP: {C('GET / HTTP/1.1')}, Host, User-Agent, Accept, blank line"),
 ])
 
 # The first segment that carries application bytes. TCP does not interpret them.
@@ -449,7 +449,7 @@ SLIDES["scope"] = (
 )
 
 SLIDES["read"] = (
-    "Parsing means reading bytes at fixed offsets",
+    "Decoding means reading bytes at fixed offsets",
     section(
         "hex-eth",
         "An Ethernet frame, as real bytes",

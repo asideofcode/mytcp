@@ -126,7 +126,7 @@ func (c *Conn) Handshake(cfg *Config) error {
 		return fmt.Errorf("mintls: expected ClientHello, got %d", chBody[0])
 	}
 	// Skip the 4-byte handshake header: type(1) length(3).
-	ch, err := parseClientHello(chBody[4:])
+	ch, err := decodeClientHello(chBody[4:])
 	if err != nil {
 		return err
 	}
@@ -148,7 +148,7 @@ func (c *Conn) Handshake(cfg *Config) error {
 
 	// Pattern for each server message: build it, add it to the transcript,
 	// and send it in its own plaintext handshake record.
-	sh := marshalServerHello(serverRandom, sessionID)
+	sh := encodeServerHello(serverRandom, sessionID)
 	hs.Write(sh)
 	if err := writeRecord(c.raw, recordHandshake, VersionTLS12, sh); err != nil {
 		return err
@@ -157,7 +157,7 @@ func (c *Conn) Handshake(cfg *Config) error {
 	// --- Certificate ---
 	// Our certificate chain. The client uses it to learn our long-term
 	// public key (and, with a real CA, to check who we are).
-	certMsg := marshalCertificate(cert.Certificate)
+	certMsg := encodeCertificate(cert.Certificate)
 	hs.Write(certMsg)
 	if err := writeRecord(c.raw, recordHandshake, VersionTLS12, certMsg); err != nil {
 		return err
@@ -175,7 +175,7 @@ func (c *Conn) Handshake(cfg *Config) error {
 	// The ephemeral public key is signed with the certificate key. That
 	// proves we own the certificate and stops a man in the middle from
 	// swapping in his own ECDHE key.
-	ske, err := marshalServerKeyExchange(ch.random, serverRandom, ecdhe.PublicKey().Bytes(), cert.PrivateKey)
+	ske, err := encodeServerKeyExchange(ch.random, serverRandom, ecdhe.PublicKey().Bytes(), cert.PrivateKey)
 	if err != nil {
 		return err
 	}
@@ -186,7 +186,7 @@ func (c *Conn) Handshake(cfg *Config) error {
 
 	// --- ServerHelloDone ---
 	// An empty message that means "your turn".
-	shd := marshalServerHelloDone()
+	shd := encodeServerHelloDone()
 	hs.Write(shd)
 	if err := writeRecord(c.raw, recordHandshake, VersionTLS12, shd); err != nil {
 		return err
@@ -201,7 +201,7 @@ func (c *Conn) Handshake(cfg *Config) error {
 	if ckeBody[0] != hsClientKeyExchange {
 		return fmt.Errorf("mintls: expected ClientKeyExchange, got %d", ckeBody[0])
 	}
-	clientPubBytes, err := parseClientKeyExchange(ckeBody[4:])
+	clientPubBytes, err := decodeClientKeyExchange(ckeBody[4:])
 	if err != nil {
 		return err
 	}
@@ -275,7 +275,7 @@ func (c *Conn) Handshake(cfg *Config) error {
 		return err
 	}
 	serverVerify := finishedVerify(master, "server finished", hs.Sum(nil))
-	fin := marshalFinished(serverVerify)
+	fin := encodeFinished(serverVerify)
 	// The first record under our keys: sealed with sequence number 0.
 	enc := c.out.seal(recordHandshake, VersionTLS12, fin)
 	if err := writeRecord(c.raw, recordHandshake, VersionTLS12, enc); err != nil {

@@ -6,6 +6,7 @@
 #   make lab-up   start long-lived Docker lab
 #   make shell    bash inside mytcp-lab
 #   make smoke    ping + TCP echo inside the lab
+#   make smoke-internet  mytcp as a client, out through NAT
 #   make lab-down stop lab container
 
 BIN     := bin
@@ -15,7 +16,7 @@ UI_PORT ?= 8765
 TALK_PORT ?= 8766
 
 .PHONY: help test build clean \
-	lab-up lab-down shell smoke status logs \
+	lab-up lab-down shell smoke smoke-internet lab-nat status logs \
 	lab-build lab-run lab-run-https lab-run-https-diy lab-run-echo ui talk talk-index
 
 help:
@@ -32,7 +33,9 @@ help:
 	@echo "lab (Docker / Linux TAP):"
 	@echo "  make lab-up     build image + start mytcp-lab"
 	@echo "  make shell      interactive bash in the lab"
-	@echo "  make smoke      ping + curl + echo smoke test"
+	@echo "  make smoke      ping + curl + echo smoke test, server and client"
+	@echo "  make lab-nat    NAT 10.0.0.0/24 out of the lab (client mode)"
+	@echo "  make smoke-internet  mytcp -get through NAT to a real site"
 	@echo "  make status     docker compose ps"
 	@echo "  make logs       follow lab container logs"
 	@echo "  make lab-down   stop and remove lab"
@@ -74,6 +77,12 @@ shell:
 
 smoke:
 	$(LAB) smoke
+
+lab-nat:
+	$(LAB) nat
+
+smoke-internet:
+	$(LAB) smoke-internet
 
 status:
 	$(LAB) status

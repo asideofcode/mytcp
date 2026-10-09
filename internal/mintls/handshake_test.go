@@ -17,8 +17,8 @@ func validClientHello() []byte {
 	return b
 }
 
-func TestParseClientHelloValid(t *testing.T) {
-	ch, err := parseClientHello(validClientHello())
+func TestDecodeClientHelloValid(t *testing.T) {
+	ch, err := decodeClientHello(validClientHello())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -29,20 +29,20 @@ func TestParseClientHelloValid(t *testing.T) {
 
 // Every truncation of a valid hello must be an error, never a panic: the
 // bytes come straight from the network.
-func TestParseClientHelloTruncated(t *testing.T) {
+func TestDecodeClientHelloTruncated(t *testing.T) {
 	full := validClientHello()
 	for n := 0; n < len(full); n++ {
-		if _, err := parseClientHello(full[:n]); err == nil {
+		if _, err := decodeClientHello(full[:n]); err == nil {
 			t.Errorf("len %d: expected an error", n)
 		}
 	}
 }
 
-func TestParseClientHelloGarbage(t *testing.T) {
+func TestDecodeClientHelloGarbage(t *testing.T) {
 	r := rand.New(rand.NewSource(1))
 	for i := 0; i < 20000; i++ {
 		b := make([]byte, r.Intn(80))
 		r.Read(b)
-		parseClientHello(b) // must not panic
+		decodeClientHello(b) // must not panic
 	}
 }

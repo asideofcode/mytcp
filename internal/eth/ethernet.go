@@ -36,7 +36,7 @@ type Frame struct {
 	Payload []byte           // everything after the 14-byte header
 }
 
-// Parse decodes an Ethernet II frame. The on-the-wire layout is:
+// Decode decodes an Ethernet II frame. The on-the-wire layout is:
 //
 //	0        6        12     14
 //	+--------+--------+------+-------------
@@ -47,7 +47,7 @@ type Frame struct {
 // The EtherType is big-endian (network byte order), like every multi-byte
 // field in these protocols. MAC addresses and payload are copied, so the
 // returned Frame stays valid after the caller reuses its read buffer.
-func Parse(b []byte) (Frame, error) {
+func Decode(b []byte) (Frame, error) {
 	// Anything shorter than the header cannot even say who it is for.
 	if len(b) < HeaderLen {
 		return Frame{}, fmt.Errorf("ethernet: frame too short (%d)", len(b))
@@ -60,10 +60,10 @@ func Parse(b []byte) (Frame, error) {
 	}, nil
 }
 
-// Marshal encodes the frame into wire bytes, using the same layout as Parse.
+// Encode encodes the frame into wire bytes, using the same layout as Decode.
 // It does not pad to the 60-byte Ethernet minimum; the TAP device accepts
 // short frames as they are.
-func (f Frame) Marshal() []byte {
+func (f Frame) Encode() []byte {
 	out := make([]byte, HeaderLen+len(f.Payload))
 	copy(out[0:6], f.Dst)                          // bytes 0-5: destination MAC
 	copy(out[6:12], f.Src)                         // bytes 6-11: source MAC

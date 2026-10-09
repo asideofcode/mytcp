@@ -62,6 +62,32 @@ curl http://10.0.0.2/
 #             nc 10.0.0.2 7
 ```
 
+### Client mode (mytcp connects out)
+
+mytcp can also start connections: `-dial` is nc over our TCP, `-get` is
+Go's own `http.Client` with our `DialContext` in its Transport. It exits
+when the exchange ends.
+
+```bash
+# shell 1, kernel side of the cable:
+nc -l 9000
+# shell 2:
+/tmp/mytcp -i tap0 -dial 10.0.0.1:9000 -dump=false     # type; lines go both ways
+
+# out to the internet, via the kernel as gateway + NAT:
+make lab-nat                                          # once per lab start
+/tmp/mytcp -i tap0 -get http://example.com/ -dump=false
+make smoke-internet                                   # the same, as a check
+```
+
+Names are resolved by our own DNS client over our own UDP (`-dns`, default
+`1.1.1.1`), so the client path opens no kernel sockets. To see it:
+
+```bash
+strace -f -e trace=%network /tmp/mytcp -i tap0 -get https://www.google.com/ -dump=false
+# only netlink, from the `ip` commands that set up tap0; no AF_INET
+```
+
 ### Packet inspector (browser)
 
 Captures write `captures/<name>.jsonl` (for the UI) and `.pcap` (Wireshark).
@@ -80,7 +106,7 @@ The UI lists packets, peels L2→L7 (including HTTP), and highlights hex ranges 
 Other helpers:
 
 ```bash
-make smoke        # ping + TCP echo in one shot
+make smoke        # every server app, then -dial / -get against nc
 make status
 make lab-down     # stop when you're done for the day
 make help         # all targets
@@ -111,6 +137,10 @@ go build -o /tmp/mytcp ./cmd/mytcp
 | `-dump` | `true` | Layered onion decode + hex per header |
 | `-dump-only` | `false` | No protocol replies |
 | `-pcap` | `captures/latest` | Capture stem (`.jsonl` + `.pcap`); `""` off |
+| `-gw` | the `-host` address | Next hop for anything off the `-host` subnet |
+| `-dial` | | Client: connect to `host:port`, copy stdin/stdout (no server app) |
+| `-get` | | Client: fetch a URL with `net/http.Client` over our TCP |
+| `-dns` | `1.1.1.1` | DNS server our resolver asks for `-dial`/`-get` names |
 
 ## Layout
 
@@ -121,11 +151,13 @@ internal/eth/       Ethernet II
 internal/arp/       ARP request/reply
 internal/ip4/       IPv4 + checksum
 internal/icmp/      Echo request/reply
-internal/tcp/       Segments + conn state + net.Listener/Conn + retransmit
+internal/tcp/       Segments + conn state + Listen/Dial + net.Conn + retransmit
+internal/udp/       UDP datagrams (for DNS)
+internal/dns/       DNS query/answer wire format (stub resolver lives in stack)
 internal/http1/     Tiny HTTP/1 server (Serve on Listener; also Handler for net/http)
 internal/https1/    HTTPS: crypto/tls or mintls + http1
 internal/mintls/    Minimal TLS 1.2 server (one cipher suite)
-internal/stack/     Demux L2→L4
+internal/stack/     Demux L2→L4, ARP cache, UDP ports, DialContext + DNS lookup
 internal/dump/      Layered frame decode (onion)
 internal/capture/   JSONL + PCAP writer
 web/                Browser packet inspector
@@ -142,7 +174,7 @@ scripts/setup-tap.sh
 
 ## Tests
 
-Parser/checksum tests run on macOS (no TAP required):
+Decode/checksum tests run on macOS (no TAP required):
 
 ```bash
 make test

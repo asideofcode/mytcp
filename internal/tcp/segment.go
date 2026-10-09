@@ -25,8 +25,8 @@ const (
 )
 
 // Segment is one TCP segment: the header fields we care about plus the
-// payload. It is what IPv4 hands us (via Parse) and what we hand back to
-// IPv4 (via Marshal).
+// payload. It is what IPv4 hands us (via Decode) and what we hand back to
+// IPv4 (via Encode).
 //
 // On the wire the header looks like this (RFC 9293 section 3.1).
 // All multi-byte fields are big-endian ("network byte order").
@@ -65,9 +65,9 @@ type Segment struct {
 	HdrLen  int // header length in bytes including options, as received
 }
 
-// Parse decodes a TCP segment from an IPv4 payload. It validates only the
+// Decode decodes a TCP segment from an IPv4 payload. It validates only the
 // length and data offset. It does not verify the checksum.
-func Parse(b []byte) (Segment, error) {
+func Decode(b []byte) (Segment, error) {
 	if len(b) < MinHeaderLen {
 		return Segment{}, fmt.Errorf("tcp: too short (%d)", len(b))
 	}
@@ -91,12 +91,12 @@ func Parse(b []byte) (Segment, error) {
 	}, nil
 }
 
-// Marshal encodes the segment into wire bytes, ready to become an IPv4
+// Encode encodes the segment into wire bytes, ready to become an IPv4
 // payload. The source and destination IPs are needed because the TCP
 // checksum covers a pseudo-header built from them (see pseudoChecksum).
 // The output always has a 20-byte header with no options and a zero
 // urgent pointer.
-func (s Segment) Marshal(srcIP, dstIP net.IP) []byte {
+func (s Segment) Encode(srcIP, dstIP net.IP) []byte {
 	hdrLen := MinHeaderLen
 	out := make([]byte, hdrLen+len(s.Payload))
 	binary.BigEndian.PutUint16(out[0:2], s.SrcPort)
