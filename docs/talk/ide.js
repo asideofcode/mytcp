@@ -133,12 +133,19 @@
       const url = index.root
         ? `/src/${path}`
         : `${index.remote || ""}${path}`;
-      cache.set(path, fetch(url).then((r) => {
-        if (!r.ok) throw new Error(`could not load ${path}`);
+      const p = fetch(url, { cache: "no-cache" }).then((r) => {
+        if (!r.ok) throw new Error(`could not load ${path} (HTTP ${r.status})`);
         return r.text();
-      }));
+      });
+      // Only successes are cached; a failed fetch is retried on the next click.
+      p.catch(() => cache.delete(path));
+      cache.set(path, p);
     }
     return cache.get(path);
+  }
+
+  function blobURL(path, line = 1) {
+    return `${index.blob || "https://github.com/asideofcode/mytcp/blob/main/"}${path}#L${line}`;
   }
 
   // Find the slide's code in the file: by symbol name first, then by the
@@ -172,13 +179,19 @@
 
   async function show(path, symbol = "", snippet = "") {
     const el = await ensureReady();
-    const src = await text(path);
+    let src, failed = false;
+    try {
+      src = await text(path);
+    } catch (e) {
+      failed = true;
+      src = `// ${e.message}\n// Click the file again to retry, or open it on GitHub:\n// ${blobURL(path)}\n`;
+    }
     const ext = path.split(".").pop();
-    const model = window.monaco.editor.createModel(src, LANG[ext] || "plaintext");
+    const model = window.monaco.editor.createModel(src, failed ? "plaintext" : LANG[ext] || "plaintext");
     editor.getModel()?.dispose();
     editor.setModel(model);
 
-    const where = symbol || snippet ? locate(src, symbol, snippet) : null;
+    const where = !failed && (symbol || snippet) ? locate(src, symbol, snippet) : null;
     decorations.set(
       where
         ? [{
@@ -198,7 +211,7 @@
       openLink.href = `cursor://file/${index.root}/${path}:${line}`;
       openLink.textContent = "Open in Cursor ↗";
     } else {
-      openLink.href = `${index.blob || "https://github.com/asideofcode/mytcp/blob/main/"}${path}#L${line}`;
+      openLink.href = blobURL(path, line);
       openLink.textContent = "Open on GitHub ↗";
       openLink.target = "_blank";
       openLink.rel = "noopener";
